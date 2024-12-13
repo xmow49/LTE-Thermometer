@@ -1,0 +1,18 @@
+dependencies:
+  thingsboard/thingsboard: "*"
+  espressif/esp_modem: "*"
+  cmake_utilities: "0.*"
+  led_indicator:
+    version: "~0.3.0"
+  json_parser:
+    version: "1.0.3"
+  iot_usbh_modem:
+    version: ">=0.2.0"
+
+  espressif/esp32_s3_usb_otg:
+    version: "^1.5.1"
+    rules:
+      - if: "target in [esp32s3]"
+  lvgl/lvgl: "~8.3.0"
+  esp_lvgl_port: "^1"
+  zorxx/dht: "*"
