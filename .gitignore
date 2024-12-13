@@ -50,3 +50,10 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+
+build/
+managed_components/
+sdkconfig
+sdkconfig.old
+.vscode/settings.json
