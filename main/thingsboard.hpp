@@ -6,7 +6,7 @@
 extern "C"
 {
 #endif
-#define MAX_MESSAGE_SIZE 2048U
+#define MAX_MESSAGE_SIZE 4096U
 
     void tb_init();
     void tb_task(void *pvParameters);

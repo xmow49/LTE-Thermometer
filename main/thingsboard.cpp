@@ -23,6 +23,8 @@ bool force_update = false;
 Espressif_MQTT_Client mqttClient;
 ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE);
 
+SemaphoreHandle_t mqtt_mutex = NULL;
+
 // Add this function outside the tb_task
 void processSharedAttributeUpdate(const JsonObjectConst &data)
 {
@@ -41,6 +43,14 @@ extern "C" void tb_task(void *pvParameters)
 {
     esp_err_t ret;
     sd_init();
+
+    mqtt_mutex = xSemaphoreCreateMutex();
+    if (mqtt_mutex == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create MQTT mutex");
+        vTaskDelete(NULL);
+        return;
+    }
 
     char thingsboard_server[512] = "";
     int thingsboard_port = 0;
@@ -93,7 +103,7 @@ extern "C" void tb_task(void *pvParameters)
     const Shared_Attribute_Callback<MAX_ATTRIBUTES> callback(processSharedAttributeUpdate, SUBSCRIBED_SHARED_ATTRIBUTES.cbegin(), SUBSCRIBED_SHARED_ATTRIBUTES.cend());
 
     // bool subscribed = false;
-
+    mqttClient.set_buffer_size(4096, 4096);
     mqttClient.set_keep_alive_timeout(300); // 30 minutes
 
     // mqttClient.set_disable_keep_alive(true);
@@ -116,6 +126,9 @@ extern "C" void tb_task(void *pvParameters)
             connecting = true;
             ESP_LOGI(TAG, "Connecting to %s:%d with client ID %s, username %s, password %s", thingsboard_server, thingsboard_port, client_id, username, password);
             lcd_setup_msg("Connexion", "au serveur");
+            ESP_LOGI(TAG, "Free heap total: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
+            ESP_LOGI(TAG, "Free internal heap: %ld", esp_get_free_internal_heap_size());
+
             bool connected = tb.connect(thingsboard_server, username, thingsboard_port, client_id, password);
             ESP_LOGI(TAG, "Connected result: %d", connected);
             if (!connected)
@@ -209,23 +222,32 @@ extern "C" void tb_task(void *pvParameters)
 
 bool sendTelemetryJson(const char *topic, char *json)
 {
+
+    if (xSemaphoreTake(mqtt_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    {
+        ESP_LOGE(TAG, "Failed to take MQTT mutex");
+        return false;
+    }
+
     ESP_LOGI(TAG, "Sent telemetry to %s", topic);
     printf("%s\n", json);
     if (tb.connected())
     {
         tb.Send_Json_String(topic, json);
+        xSemaphoreGive(mqtt_mutex);
         return true;
     }
     else
     {
         ESP_LOGW(TAG, "Failed to send telemetry, not connected to TB");
+        xSemaphoreGive(mqtt_mutex);
         return false;
     }
 }
 
 extern "C" void tb_init()
 {
-    xTaskCreate(tb_task, "tb_task", 8 * 1024, NULL, 5, NULL);
+    xTaskCreate(tb_task, "tb_task", 12 * 1024, NULL, 5, NULL);
 }
 
 extern "C" void tb_force_update()
