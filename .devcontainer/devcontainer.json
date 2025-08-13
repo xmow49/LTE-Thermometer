@@ -1,7 +1,11 @@
 {
 	"name": "ESP-IDF",
 	"build": {
-		"dockerfile": "Dockerfile"
+		"dockerfile": "Dockerfile",
+		"args": {
+			"USER_UID": "${localEnv:UID:1000}",
+			"USER_GID": "${localEnv:GID:1000}"
+		}
 	},
 	"customizations": {
 		"vscode": {
