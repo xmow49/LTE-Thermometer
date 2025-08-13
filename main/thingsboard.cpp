@@ -15,6 +15,8 @@
 #include "main.h"
 #include "lcd.h"
 #include "config.h"
+#include "crash.h"
+
 #include <OTA_Firmware_Update.h>
 #include <Espressif_Updater.h>
 
@@ -31,8 +33,8 @@ OTA_Firmware_Update<> ota;
 const std::array<IAPI_Implementation *, 2U> apis = {
     &ota,
 };
-
-ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE + 50, MAX_MESSAGE_SIZE + 50, Default_Max_Stack_Size, apis);
+//                            receive      send
+ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE, 0xFFFF, Default_Max_Stack_Size, apis);
 Espressif_Updater<> updater;
 
 SemaphoreHandle_t mqtt_mutex = NULL;
@@ -122,7 +124,6 @@ extern "C" void tb_task(void *pvParameters)
     const Shared_Attribute_Callback<MAX_ATTRIBUTES> callback(processSharedAttributeUpdate, SUBSCRIBED_SHARED_ATTRIBUTES.cbegin(), SUBSCRIBED_SHARED_ATTRIBUTES.cend());
 
     // bool subscribed = false;
-    mqttClient.set_buffer_size(4096, 4096);
     mqttClient.set_keep_alive_timeout(300); // 30 minutes
 
     TickType_t last_update = xTaskGetTickCount();
@@ -196,6 +197,7 @@ extern "C" void tb_task(void *pvParameters)
             else if (first_cycle)
             {
                 reason = "First cycle";
+                crash_check_dump();
             }
             else if (force_update)
             {

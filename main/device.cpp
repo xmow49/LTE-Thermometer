@@ -164,6 +164,15 @@ extern "C" void device_receive(char *mac, telemetry_message data)
     }
 }
 
+extern "C" void device_gateway_send_json_telemetry(char *json)
+{
+    Device *device = deviceList.find_by_mac(DEVICE_GATEWAY_MAC);
+    if (device)
+    {
+        device->sendJsonTelemetry(json);
+    }
+}
+
 void device_list()
 {
     for (const auto &device : deviceList.get_all())

@@ -75,6 +75,8 @@ extern "C"
     void device_add(char *name, char *mac);
     void device_receive(char *mac, telemetry_message data);
     void device_report_telemetry(char *mac, char *key, float value);
+    void device_gateway_send_json_telemetry(char *json);
+
 #ifdef __cplusplus
 }
 #endif
