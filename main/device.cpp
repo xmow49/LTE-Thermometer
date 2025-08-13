@@ -30,6 +30,7 @@ Device::Device(char *name, char *mac)
     this->name = name;
     mac_from_string(mac, this->mac);
     this->isGateway = memcmp(this->mac, gateway_mac, 6) == 0;
+    telemetry_list.reserve(50);
     ESP_LOGI(TAG, "Device %s: %s, isGateway: %d", name, getMacString().c_str(), isGateway);
 }
 
@@ -98,7 +99,7 @@ bool Device::sendTelemetry(char *key, float value)
 
 void DeviceList::add(Device *device)
 {
-    devices.push_back(device);
+    devices.emplace_back(device);
 }
 
 Device *DeviceList::find_by_mac(const char *mac)
@@ -137,7 +138,7 @@ void Device::addTelemetry(TelemetryReport telemetry)
 
     // round float to 2 decimal places
     // ESP_LOGI(TAG, "TelemetryReport: add %s: %f, timestamp: %lld, stored: %d", telemetry.name.c_str(), telemetry.value, telemetry.timestamp, telemetry_list.size());
-    telemetry_list.push_back(telemetry);
+    telemetry_list.emplace_back(telemetry);
 }
 
 extern "C" void device_add(char *name, char *mac)

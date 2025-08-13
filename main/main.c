@@ -312,7 +312,8 @@ void app_main(void)
 void main_report_telemetry()
 {
     device_report_telemetry(DEVICE_GATEWAY_MAC, "ram", esp_get_free_heap_size());
-    device_report_telemetry(DEVICE_GATEWAY_MAC, "up", xTaskGetTickCount() / 1000);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "heap", esp_get_free_internal_heap_size());
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "up", pdTICKS_TO_MS(xTaskGetTickCount()) / 1000);
 }
 
 void reboot_task(void *pvParameters)
