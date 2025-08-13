@@ -3,23 +3,23 @@ dependencies:
     component_hash: 463812931f99cb7a554d64311288f537b43daaca3eed2427557b907af393447c
     dependencies: []
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
     version: 6.21.5
   espressif/button:
-    component_hash: c3ee3ba339a3848977496d0157008ae574a24fc59f54d27c93ab51b14446a2fb
+    component_hash: 30a3f495c3862d505ce6e41adbbd218b2750e9723ab2151feff00e9fe685b326
     dependencies:
     - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
       version: 0.*
     - name: idf
       require: private
       version: '>=4.0'
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
-    version: 3.3.1
+    version: 3.5.0
   espressif/cmake_utilities:
     component_hash: 6983933aa165d5c1bd8ff3716f8873b4dd8577020d9176d22d8568b139ff8753
     dependencies:
@@ -33,19 +33,19 @@ dependencies:
   espressif/esp32_s3_usb_otg:
     component_hash: a18cf3e3327bc3bec90d624b6cdb6ec109f673440642c184b5e0b72b965773cc
     dependencies:
-    - name: espressif/button
-      registry_url: https://components.espressif.com/
-      require: public
-      version: '>=2.5,<4.0'
-    - name: espressif/esp_lvgl_port
-      registry_url: https://components.espressif.com/
-      require: public
-      version: ^1
     - name: idf
       require: private
       version: '>=4.4'
+    - name: espressif/button
+      registry_url: https://components.espressif.com
+      require: public
+      version: '>=2.5,<4.0'
+    - name: espressif/esp_lvgl_port
+      registry_url: https://components.espressif.com
+      require: public
+      version: ^1
     - name: lvgl/lvgl
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
       version: ^8
     source:
@@ -61,7 +61,7 @@ dependencies:
       require: private
       version: '>=4.4'
     - name: lvgl/lvgl
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: public
       version: ^8
     source:
@@ -69,7 +69,7 @@ dependencies:
       type: service
     version: 1.4.0
   espressif/esp_modem:
-    component_hash: e48da33fee082dd9d9a97a354a228057e07a14ac108766b40ad84e018205410a
+    component_hash: b541c3f5765d3ba062c0d004b9ca6da6d0af908293421c2dbe046c537fb2a011
     dependencies:
     - name: idf
       require: private
@@ -77,66 +77,53 @@ dependencies:
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 1.1.0
-  espressif/iot_usbh:
-    component_hash: 6248b9fb5c33ee7a0572c75947d79ec9f1ef44c0a2dd123665b22424d49e956e
-    dependencies:
-    - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com/
-      require: private
-      version: 0.*
-    - name: idf
-      require: private
-      version: '>=4.4.1'
-    source:
-      registry_url: https://components.espressif.com/
-      type: service
-    targets:
-    - esp32s2
-    - esp32s3
-    version: 0.2.1
+    version: 1.4.0
   espressif/iot_usbh_cdc:
-    component_hash: ea4c77448c25661585e9219e2d65df479ac35102e93205a6085cdb75fbf48c67
+    component_hash: 3cd0f9f63fba11ac2903b61d0497f19a39f2f0286e58e9d73286ea8edd0fade9
     dependencies:
     - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
-      version: 0.*
+      version: '*'
     - name: idf
       require: private
       version: '>=4.4.1'
-    - name: espressif/iot_usbh
-      registry_url: https://components.espressif.com/
-      require: public
-      version: 0.*
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
     targets:
     - esp32s2
     - esp32s3
-    version: 0.2.2
+    - esp32p4
+    version: 2.0.1
   espressif/iot_usbh_modem:
-    component_hash: 7dbbe32683f7e7e8755c1ad4906c129cd7d3524e9e256794d6391270d0146158
+    component_hash: 76752968d0cafe67cf29dc8aef8d7b4e8d08b5c5d9e977c942c07073251b660c
     dependencies:
     - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
+      version: 0.*
+    - name: espressif/esp_wifi_remote
+      registry_url: https://components.espressif.com
+      require: private
+      rules:
+      - if: target in [esp32p4]
       version: 0.*
     - name: idf
       require: private
       version: '>=4.4.1'
     - name: espressif/iot_usbh_cdc
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
-      version: 0.*
+      version: 2.*
     source:
       registry_url: https://components.espressif.com/
       type: service
     targets:
     - esp32s2
     - esp32s3
-    version: 0.2.1
+    - esp32p4
+    version: 1.2.0
   espressif/jsmn:
     component_hash: d80350c41bbaa827c98a25b6072df00884e72f54885996fab4a4f0aebce6b6c3
     dependencies:
@@ -144,14 +131,14 @@ dependencies:
       require: private
       version: '>=4.3'
     source:
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
     version: 1.1.0
   espressif/json_parser:
     component_hash: d74b81729ad06ec11ff5eb5b1b0d7df1d00e6027fc11471f4b139c70dcf1b1e4
     dependencies:
     - name: espressif/jsmn
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
       rules:
       - if: idf_version >=5.0
@@ -163,13 +150,13 @@ dependencies:
   espressif/led_indicator:
     component_hash: daa844acf7886b78fa4ea25c9dd6a4fb3a83f793a307187026be1c237fba632a
     dependencies:
-    - name: espressif/cmake_utilities
-      registry_url: https://components.espressif.com/
-      require: private
-      version: ~0.1.0
     - name: idf
       require: private
       version: '>=4.0'
+    - name: espressif/cmake_utilities
+      registry_url: https://components.espressif.com
+      require: private
+      version: ~0.1.0
     source:
       registry_url: https://components.espressif.com/
       type: service
@@ -177,7 +164,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.3.1
+    version: 5.5.0
   lvgl/lvgl:
     component_hash: 948bff879a345149b83065535bbc4a026ce9f47498a22881e432a264b9098015
     dependencies: []
@@ -186,19 +173,19 @@ dependencies:
       type: service
     version: 8.3.11
   thingsboard/thingsboard:
-    component_hash: 3c7e6d6951be72b622216e2fc4d0c6639596639b85d701040986d407acad484f
+    component_hash: 5ea11f90189806ed14e15c933511929278b0fc9838fd7a9a119ad3c33ade061d
     dependencies:
     - name: bblanchon/arduinojson
-      registry_url: https://components.espressif.com/
+      registry_url: https://components.espressif.com
       require: private
-      version: ^6.21.4
+      version: ^6.21.5
     - name: idf
       require: private
       version: '*'
     source:
       registry_url: https://components.espressif.com/
       type: service
-    version: 0.13.0
+    version: 0.15.0
   zorxx/dht:
     component_hash: 6a5e699b15509d99b90352694e23beb6646855486eb3bafefd1d50058d474e98
     dependencies: []

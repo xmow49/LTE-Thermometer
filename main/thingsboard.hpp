@@ -10,7 +10,7 @@ extern "C"
 
     void tb_init();
     void tb_task(void *pvParameters);
-    bool sendTelemetryJson(char *topic, char *json);
+    bool sendTelemetryJson(const char *topic, char *json);
     void tb_set_network_connected(bool connected);
     void tb_force_update();
 #ifdef __cplusplus

@@ -56,11 +56,11 @@ static void espnow_event_handler(void *arg, esp_event_base_t event_base, int32_t
     }
 }
 
-static void espnow_send_cb(const uint8_t *mac_addr, esp_now_send_status_t status)
+static void espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status)
 {
     espnow_event_t evt;
     evt.id = ESPNOW_SEND_CB;
-    memcpy(evt.info.send_cb.mac_addr, mac_addr, ESP_NOW_ETH_ALEN);
+    memcpy(evt.info.send_cb.mac_addr, tx_info->des_addr, ESP_NOW_ETH_ALEN);
     evt.info.send_cb.status = status;
     if (xQueueSend(s_espnow_queue, &evt, portMAX_DELAY) != pdTRUE)
     {

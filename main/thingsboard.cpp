@@ -207,7 +207,7 @@ extern "C" void tb_task(void *pvParameters)
     }
 }
 
-bool sendTelemetryJson(char *topic, char *json)
+bool sendTelemetryJson(const char *topic, char *json)
 {
     ESP_LOGI(TAG, "Sent telemetry to %s", topic);
     printf("%s\n", json);
