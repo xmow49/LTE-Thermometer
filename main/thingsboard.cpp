@@ -15,15 +15,33 @@
 #include "main.h"
 #include "lcd.h"
 #include "config.h"
+#include <OTA_Firmware_Update.h>
+#include <Espressif_Updater.h>
 
 #define TAG "TB_TASK"
 #define MAX_ATTRIBUTES 5
 
+#define CURRENT_FIRMWARE_TITLE "LTE-Thermometer"
+#define CURRENT_FIRMWARE_VERSION "1.0.0"
+#define FW_MAX_CHUNK_RETRIES 10
+#define FW_PACKET_SIZE 4096
+
 bool force_update = false;
 Espressif_MQTT_Client mqttClient;
-ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE);
+
+OTA_Firmware_Update<> ota;
+const std::array<IAPI_Implementation *, 2U> apis = {
+    &ota,
+};
+
+ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE + 50, MAX_MESSAGE_SIZE + 50, Default_Max_Stack_Size, apis);
+Espressif_Updater<> updater;
 
 SemaphoreHandle_t mqtt_mutex = NULL;
+
+void update_starting_callback();
+void progress_callback(const size_t &current, const size_t &total);
+void finished_callback(const bool &success);
 
 // Add this function outside the tb_task
 void processSharedAttributeUpdate(const JsonObjectConst &data)
@@ -58,6 +76,9 @@ extern "C" void tb_task(void *pvParameters)
     char client_id[256] = "";
     char username[256] = "";
     char password[256] = "";
+
+    bool fw_info_sent = false;
+    bool fw_update_requested = false;
 
     ret = sd_read_root_ca(root_ca, sizeof(root_ca));
     if (ret == ESP_OK && strlen(root_ca) > 0)
@@ -105,8 +126,6 @@ extern "C" void tb_task(void *pvParameters)
     // bool subscribed = false;
     mqttClient.set_buffer_size(4096, 4096);
     mqttClient.set_keep_alive_timeout(300); // 30 minutes
-
-    // mqttClient.set_disable_keep_alive(true);
 
     TickType_t last_update = xTaskGetTickCount();
     bool connecting = false;
@@ -207,6 +226,34 @@ extern "C" void tb_task(void *pvParameters)
                 }
             }
 
+            if (!fw_info_sent)
+            {
+                ESP_LOGI(TAG, "Sending firmware info to TB");
+
+                fw_info_sent = ota.Firmware_Send_Info(CURRENT_FIRMWARE_TITLE, CURRENT_FIRMWARE_VERSION);
+                if (fw_info_sent)
+                {
+                    ESP_LOGI(TAG, "Firmware info sent successfully");
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "Failed to send firmware info");
+                }
+            }
+
+            if (!fw_update_requested)
+            {
+                const OTA_Update_Callback callback(CURRENT_FIRMWARE_TITLE,
+                                                   CURRENT_FIRMWARE_VERSION,
+                                                   &updater,
+                                                   &finished_callback,
+                                                   &progress_callback,
+                                                   &update_starting_callback,
+                                                   FW_MAX_CHUNK_RETRIES,
+                                                   FW_PACKET_SIZE);
+                fw_update_requested = ota.Start_Firmware_Update(callback);
+            }
+
             // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
             if (device_with_telemetry_sent > 0 && (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(10000)))
             {
@@ -253,4 +300,26 @@ extern "C" void tb_init()
 extern "C" void tb_force_update()
 {
     force_update = true;
+}
+
+void update_starting_callback()
+{
+    ESP_LOGI(TAG, "Firmware update starting");
+}
+
+void progress_callback(const size_t &current, const size_t &total)
+{
+    ESP_LOGI(TAG, "Downloading firmware progress %.2f%%", static_cast<float>(current * 100U) / total);
+}
+
+void finished_callback(const bool &success)
+{
+    if (success)
+    {
+        ESP_LOGI("MAIN", "OTA update finished successfully, restarting in 5s");
+        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        esp_restart();
+        return;
+    }
+    ESP_LOGI(TAG, "Downloading firmware failed");
 }
