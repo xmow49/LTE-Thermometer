@@ -245,7 +245,10 @@ void app_main(void)
     espnow_init();
 #endif
     tb_init();
+
+#if !USE_WIFI
     init_at_modem();
+#endif
 
     ESP_LOGI(TAG, "Initializing modem in 3s");
     lcd_setup_msg("Thermomètre", "4G");

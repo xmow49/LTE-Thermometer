@@ -116,6 +116,11 @@ esp_err_t get_rssi(int *rssi, int *ber)
     char response[BUF_SIZE];
     esp_err_t ret;
 
+    if (!main_network_connected())
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
     int _rssi, _ber;
 
     // Send AT command to get signal quality
@@ -178,7 +183,10 @@ esp_err_t modem_update_telemetry()
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to get RSSI: %s", esp_err_to_name(ret));
+        if (ret != ESP_ERR_INVALID_STATE)
+        {
+            ESP_LOGE(TAG, "Failed to get RSSI: %s", esp_err_to_name(ret));
+        }
     }
     return ret;
 }

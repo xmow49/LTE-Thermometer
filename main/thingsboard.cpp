@@ -21,8 +21,6 @@
 #define TAG "TB_TASK"
 #define MAX_ATTRIBUTES 5
 
-#define CURRENT_FIRMWARE_TITLE "LTE-Thermometer"
-#define CURRENT_FIRMWARE_VERSION "1.0.0"
 #define FW_MAX_CHUNK_RETRIES 10
 #define FW_PACKET_SIZE 4096
 
@@ -132,6 +130,8 @@ extern "C" void tb_task(void *pvParameters)
     bool last_connected = false;
     bool first_cycle = true;
 
+    const esp_app_desc_t *app_desc = esp_app_get_description();
+
     while (1)
     {
         if (!main_network_connected())
@@ -230,7 +230,7 @@ extern "C" void tb_task(void *pvParameters)
             {
                 ESP_LOGI(TAG, "Sending firmware info to TB");
 
-                fw_info_sent = ota.Firmware_Send_Info(CURRENT_FIRMWARE_TITLE, CURRENT_FIRMWARE_VERSION);
+                fw_info_sent = ota.Firmware_Send_Info(app_desc->project_name, app_desc->version);
                 if (fw_info_sent)
                 {
                     ESP_LOGI(TAG, "Firmware info sent successfully");
@@ -243,15 +243,15 @@ extern "C" void tb_task(void *pvParameters)
 
             if (!fw_update_requested)
             {
-                const OTA_Update_Callback callback(CURRENT_FIRMWARE_TITLE,
-                                                   CURRENT_FIRMWARE_VERSION,
+                const OTA_Update_Callback callback(app_desc->project_name,
+                                                   app_desc->version,
                                                    &updater,
                                                    &finished_callback,
                                                    &progress_callback,
                                                    &update_starting_callback,
                                                    FW_MAX_CHUNK_RETRIES,
                                                    FW_PACKET_SIZE);
-                fw_update_requested = ota.Start_Firmware_Update(callback);
+                fw_update_requested = ota.Subscribe_Firmware_Update(callback);
             }
 
             // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
