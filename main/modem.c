@@ -199,7 +199,7 @@ void modem_task(void *pvParameters)
     bool first_update = true;
     while (1)
     {
-        if ((xTaskGetTickCount() - last_update) >= pdMS_TO_TICKS(UPDATE_MODEM_INTERVAL_S * 1000) || first_update)
+        if ((xTaskGetTickCount() - last_update) >= pdMS_TO_TICKS(config.interval_modem * 1000) || first_update)
         {
             ret = modem_update_telemetry(&rssi, &ber);
             if (ret == ESP_OK)

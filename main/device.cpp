@@ -207,7 +207,7 @@ TelemetryReport::TelemetryReport(std::string name, float value)
     static time_t last_timestamp = 0;
     time_t current_time = my_time_is_set() ? time(nullptr) : 0;
 
-    if (last_timestamp == 0 || current_time - last_timestamp >= TIME_TO_CONSIDER_SAME_TIMESTAMP_S)
+    if (last_timestamp == 0 || current_time - last_timestamp >= config.time_same_timestamp)
     {
         this->timestamp = current_time;
         last_timestamp = current_time;

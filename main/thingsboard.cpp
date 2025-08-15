@@ -21,21 +21,29 @@
 #include <Espressif_Updater.h>
 
 #define TAG "TB_TASK"
-#define MAX_ATTRIBUTES 5
+#define MAX_ATTRIBUTES 32
 
 #define FW_MAX_CHUNK_RETRIES 10
 #define FW_PACKET_SIZE 4096
+
+#define REQUEST_TIMEOUT_MICROSECONDS (1000 * 1000)
 
 bool force_update = false;
 Espressif_MQTT_Client mqttClient;
 
 OTA_Firmware_Update<> ota;
-const std::array<IAPI_Implementation *, 2U> apis = {
+Attribute_Request<2U, MAX_ATTRIBUTES> attr_request;
+Shared_Attribute_Update<1U, MAX_ATTRIBUTES> shared_update;
+
+const std::array<IAPI_Implementation *, 3U> apis = {
     &ota,
+    &attr_request,
+    &shared_update,
 };
 //                            receive      send
-ThingsBoard tb(mqttClient, MAX_MESSAGE_SIZE, 0xFFFF, Default_Max_Stack_Size, apis);
+ThingsBoardSized<MAX_ATTRIBUTES> tb(mqttClient, MAX_MESSAGE_SIZE, 0xFFFF, Default_Max_Stack_Size, apis);
 Espressif_Updater<> updater;
+std::array<const char *, MAX_ATTRIBUTES> SUBSCRIBED_SHARED_ATTRIBUTES = {};
 
 SemaphoreHandle_t mqtt_mutex = NULL;
 
@@ -43,18 +51,51 @@ void update_starting_callback();
 void progress_callback(const size_t &current, const size_t &total);
 void finished_callback(const bool &success);
 
-// Add this function outside the tb_task
-void processSharedAttributeUpdate(const JsonObjectConst &data)
+void processSharedAttribute(const JsonObjectConst &data)
 {
     for (auto it = data.begin(); it != data.end(); ++it)
     {
-        if (strcmp(it->key().c_str(), "refreshrate") == 0)
+        // Safely convert value to string for logging
+        std::string valueStr;
+        serializeJson(it->value(), valueStr);
+        ESP_LOGI(TAG, "Received shared attribute update: %s = %s", it->key().c_str(), valueStr.c_str());
+
+        for (const config_entry_t *entry = config_entries; entry->name != NULL; entry++)
         {
-            int refreshRate = it->value().as<int>();
-            ESP_LOGI(TAG, "Received refreshrate: %d", refreshRate);
-            // Handle the refreshrate update here
+            if (strcmp(entry->name, it->key().c_str()) == 0)
+            {
+                switch (entry->type)
+                {
+                case CONFIG_ENTRY_TYPE_UINT32:
+                    *(uint32_t *)entry->value = it->value().as<uint32_t>();
+                    break;
+                case CONFIG_ENTRY_TYPE_FLOAT:
+                    *(float *)entry->value = it->value().as<float>();
+                    break;
+                default:
+                    break;
+                }
+                break;
+            }
         }
     }
+
+    config_save();
+}
+void processSharedAttributeUpdate(const JsonObjectConst &data)
+{
+    ESP_LOGI(TAG, "shared attribute update");
+    processSharedAttribute(data);
+}
+void requestTimedOut()
+{
+    ESP_LOGI(TAG, "Attribute request timed out did not receive a response in (%llu) microseconds", REQUEST_TIMEOUT_MICROSECONDS);
+}
+
+void processSharedAttributeRequest(const JsonObjectConst &data)
+{
+    ESP_LOGI(TAG, "Processing shared attribute request");
+    processSharedAttribute(data);
 }
 
 extern "C" void tb_task(void *pvParameters)
@@ -79,6 +120,11 @@ extern "C" void tb_task(void *pvParameters)
 
     bool fw_info_sent = false;
     bool fw_update_requested = false;
+    bool shared_attributes_subscribed = false;
+
+    bool connecting = false;
+    bool last_connected = false;
+    bool first_cycle = true;
 
     ret = sd_read_root_ca(root_ca, sizeof(root_ca));
     if (ret == ESP_OK && strlen(root_ca) > 0)
@@ -120,16 +166,9 @@ extern "C" void tb_task(void *pvParameters)
         lcd_setup_msg("Erreur SD", "Erreur Devices");
     }
 
-    const std::array<const char *, MAX_ATTRIBUTES> SUBSCRIBED_SHARED_ATTRIBUTES = {"refreshrate"};
-    const Shared_Attribute_Callback<MAX_ATTRIBUTES> callback(processSharedAttributeUpdate, SUBSCRIBED_SHARED_ATTRIBUTES.cbegin(), SUBSCRIBED_SHARED_ATTRIBUTES.cend());
-
-    // bool subscribed = false;
     mqttClient.set_keep_alive_timeout(300); // 30 minutes
 
     TickType_t last_update = xTaskGetTickCount();
-    bool connecting = false;
-    bool last_connected = false;
-    bool first_cycle = true;
 
     const esp_app_desc_t *app_desc = esp_app_get_description();
 
@@ -170,23 +209,7 @@ extern "C" void tb_task(void *pvParameters)
             vTaskDelay(pdMS_TO_TICKS(1000));
             last_connected = false;
         }
-
-        // if (tb.connected() && !subscribed)
-        // {
-        //     ESP_LOGI(TAG, "Subscribing for shared attribute updates");
-
-        //     if (tb.Shared_Attributes_Subscribe(callback))
-        //     {
-        //         ESP_LOGI(TAG, "Subscribed successfully");
-        //         subscribed = true;
-        //     }
-        //     else
-        //     {
-        //         ESP_LOGE(TAG, "Failed to subscribe for shared attribute updates");
-        //         subscribed = false;
-        //     }
-        // }
-        bool time_to_send = (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(UPDATE_THINGSBOARD_INTERVAL_S * 1000));
+        bool time_to_send = (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(config.interval_send_to_tb * 1000));
         if (time_to_send || first_cycle || force_update)
         {
             std::string reason;
@@ -215,7 +238,6 @@ extern "C" void tb_task(void *pvParameters)
                 if (device->getTelemetryList().size() > 0)
                 {
                     std::string json = device->computeTelemetryJson();
-                    printf("%s\n", json.c_str());
                     if (!device->sendJsonTelemetry((char *)json.c_str()))
                     {
                         ESP_LOGE(TAG, "Failed to send telemetry for device %s", device->getName().c_str());
@@ -256,6 +278,40 @@ extern "C" void tb_task(void *pvParameters)
                 fw_update_requested = ota.Subscribe_Firmware_Update(callback);
             }
 
+            if (!shared_attributes_subscribed)
+            {
+                size_t index = 0;
+
+                for (const config_entry_t *entry = config_entries; entry->name != NULL && index < config_entries_count; entry++, index++)
+                {
+                    ESP_LOGI(TAG, "Added attribute: %s", entry->name);
+                    SUBSCRIBED_SHARED_ATTRIBUTES[index] = entry->name;
+                }
+
+                const Shared_Attribute_Callback<MAX_ATTRIBUTES> callback(processSharedAttributeUpdate, SUBSCRIBED_SHARED_ATTRIBUTES);
+                ESP_LOGI(TAG, "Subscribing for shared attribute updates");
+                if (shared_update.Shared_Attributes_Subscribe(callback))
+                {
+                    ESP_LOGI(TAG, "Subscribed successfully");
+                    shared_attributes_subscribed = true;
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "Failed to subscribe for shared attribute updates");
+                    shared_attributes_subscribed = false;
+                }
+
+                const Attribute_Request_Callback<MAX_ATTRIBUTES> sharedCallback(&processSharedAttributeRequest, REQUEST_TIMEOUT_MICROSECONDS, &requestTimedOut, SUBSCRIBED_SHARED_ATTRIBUTES);
+
+                if (attr_request.Shared_Attributes_Request(sharedCallback))
+                {
+                    ESP_LOGI(TAG, "Shared attribute request sent successfully");
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "Failed to send shared attribute request");
+                }
+            }
             // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
             if (device_with_telemetry_sent > 0 && (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(10000)))
             {

@@ -77,7 +77,7 @@ void ping_task(void *pvParameters)
             continue;
         }
         esp_ping_start(ping);
-        vTaskDelay(pdMS_TO_TICKS(UPDATE_PING_INTERVAL_S * 1000));
+        vTaskDelay(pdMS_TO_TICKS(config.interval_ping * 1000));
     }
 }
 

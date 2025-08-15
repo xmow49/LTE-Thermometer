@@ -6,24 +6,45 @@ extern "C"
 {
 #endif
 
-#define UPDATE_THINGSBOARD_INTERVAL_S 60 * 60
-#define UPDATE_SENSORS_INTERVAL_S 10 * 60
-#define UPDATE_PING_INTERVAL_S 60 * 60
-#define UPDATE_MODEM_INTERVAL_S 10 * 60
-#define UPDATE_MAIN_INTERVAL_S 10 * 60
-#define UPDATE_BATTERY_INTERVAL_S 10 * 60
-#define LCD_TIMEOUT_S 20
-#define TIME_TO_CONSIDER_SAME_TIMESTAMP_S 3
+#include <stdint.h>
+#include <stdbool.h>
+    typedef struct
+    {
+        uint32_t interval_modem;
+        uint32_t interval_stats;
+        uint32_t interval_battery;
+        uint32_t interval_ping;
+        uint32_t interval_send_to_tb;
 
-    // debug
-    // #define UPDATE_THINGSBOARD_INTERVAL_S 10
-    // #define UPDATE_SENSORS_INTERVAL_S 4
-    // #define UPDATE_PING_INTERVAL_S 6
-    // #define UPDATE_MODEM_INTERVAL_S 1
-    // #define UPDATE_MAIN_INTERVAL_S 1
-    // #define UPDATE_BATTERY_INTERVAL_S 1
-    // #define LCD_TIMEOUT_S 20
-    // #define TIME_TO_CONSIDER_SAME_TIMESTAMP_S 3
+        uint32_t time_same_timestamp;
+        uint32_t interval_lcd_timeout;
+
+        float sensor_temperature_change_threshold;
+        float sensor_humidity_change_threshold;
+        uint32_t sensor_interval_force_update;
+    } config_t;
+
+    typedef enum
+    {
+        CONFIG_ENTRY_TYPE_NONE = 0,
+        CONFIG_ENTRY_TYPE_UINT32,
+        CONFIG_ENTRY_TYPE_FLOAT,
+    } config_entry_type_t;
+    typedef struct
+    {
+        const char *name;
+        config_entry_type_t type;
+        void *value;
+    } config_entry_t;
+
+    extern config_t config;
+    extern const config_entry_t config_entries[];
+    extern const uint32_t config_entries_count;
+
+    void config_init();
+    void config_set_default();
+    bool config_load();
+    bool config_save();
 
 #ifdef __cplusplus
 }

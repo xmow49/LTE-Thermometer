@@ -28,8 +28,6 @@ void button_task(void *pvParameters)
 
     bool last_state = false;
     bool state = false;
-    dht_data_t data;
-    esp_err_t ret;
 
     while (1)
     {
@@ -41,15 +39,12 @@ void button_task(void *pvParameters)
             {
                 lcd_set_on(true);
                 ESP_LOGI(TAG, "Button pressed");
-                ret = sensors_read_temp(&data);
-                if (ret == ESP_OK)
-                {
-                    sensors_report_telemetry(&data);
-                    modem_update_telemetry();
-                    battery_update_telemetry();
-                    main_report_telemetry();
-                    tb_force_update();
-                }
+
+                sensors_report_telemetry();
+                modem_update_telemetry();
+                battery_update_telemetry();
+                main_report_telemetry();
+                tb_force_update();
             }
         }
         vTaskDelay(pdMS_TO_TICKS(20));

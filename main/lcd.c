@@ -463,7 +463,7 @@ void lcd_task(void *pvParameters)
     lcd_last_on = xTaskGetTickCount();
     while (1)
     {
-        if (lcd_on && (xTaskGetTickCount() - lcd_last_on > pdMS_TO_TICKS(LCD_TIMEOUT_S * 1000)))
+        if (lcd_on && (xTaskGetTickCount() - lcd_last_on > pdMS_TO_TICKS(config.interval_lcd_timeout * 1000)))
         {
             ESP_LOGI(TAG, "Turning off LCD");
             lcd_set_on(false);

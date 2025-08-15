@@ -177,7 +177,7 @@ void battery_task(void *pvParameters)
             ESP_LOGE(TAG, "Error updating battery telemetry: %s", esp_err_to_name(ret));
         }
 
-        vTaskDelay(pdMS_TO_TICKS(UPDATE_BATTERY_INTERVAL_S * 1000));
+        vTaskDelay(pdMS_TO_TICKS(config.interval_battery * 1000));
     }
 }
 

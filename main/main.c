@@ -31,6 +31,7 @@
 #include "my_time.h"
 #include "device.hpp"
 #include "config.h"
+#include "crash.h"
 #include "main.h"
 #define TAG "main"
 
@@ -239,6 +240,7 @@ void app_main(void)
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
 
+    config_init();
     lcd_init();
     // xTaskCreate(init_modem, "init_modem", 4 * 1024, NULL, 5, NULL);
 #if !USE_WIFI // espnow conflicts with wifi
@@ -299,13 +301,12 @@ void app_main(void)
     battery_init();
 
     // send_sms("+33000000000", "Hello.");
-
     while (1)
     {
         // print free heap
         // ESP_LOGI(TAG, "Free heap: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
         main_report_telemetry();
-        vTaskDelay(pdMS_TO_TICKS(UPDATE_MAIN_INTERVAL_S * 1000));
+        vTaskDelay(pdMS_TO_TICKS(config.interval_stats * 1000));
     }
 }
 

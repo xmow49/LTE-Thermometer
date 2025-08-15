@@ -57,3 +57,5 @@ managed_components/
 sdkconfig
 sdkconfig.old
 .vscode/settings.json
+
+crash.txt
