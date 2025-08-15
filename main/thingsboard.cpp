@@ -1,6 +1,7 @@
 #include "thingsboard.hpp"
 #include <ThingsBoard.h>
 #include <Espressif_MQTT_Client.h>
+#include <Server_Side_RPC.h>
 
 #include <Shared_Attribute_Callback.h>
 #include "esp_log.h"
@@ -15,6 +16,10 @@
 #include "main.h"
 #include "lcd.h"
 #include "config.h"
+#include "sensors.hpp"
+#include "modem.h"
+#include "battery.h"
+
 #include "crash.h"
 
 #include <OTA_Firmware_Update.h>
@@ -26,6 +31,8 @@
 #define FW_MAX_CHUNK_RETRIES 10
 #define FW_PACKET_SIZE 4096
 
+#define MAX_RPC_SUBSCRIPTIONS 16
+
 #define REQUEST_TIMEOUT_MICROSECONDS (1000 * 1000)
 
 bool force_update = false;
@@ -34,12 +41,13 @@ Espressif_MQTT_Client mqttClient;
 OTA_Firmware_Update<> ota;
 Attribute_Request<2U, MAX_ATTRIBUTES> attr_request;
 Shared_Attribute_Update<1U, MAX_ATTRIBUTES> shared_update;
+Server_Side_RPC<MAX_RPC_SUBSCRIPTIONS, 5> rpc;
 
-const std::array<IAPI_Implementation *, 3U> apis = {
+const std::array<IAPI_Implementation *, 4U> apis = {
     &ota,
     &attr_request,
     &shared_update,
-};
+    &rpc};
 //                            receive      send
 ThingsBoardSized<MAX_ATTRIBUTES> tb(mqttClient, MAX_MESSAGE_SIZE, 0xFFFF, Default_Max_Stack_Size, apis);
 Espressif_Updater<> updater;
@@ -53,6 +61,7 @@ void finished_callback(const bool &success);
 
 void processSharedAttribute(const JsonObjectConst &data)
 {
+    config_t before_config = config;
     for (auto it = data.begin(); it != data.end(); ++it)
     {
         // Safely convert value to string for logging
@@ -80,7 +89,15 @@ void processSharedAttribute(const JsonObjectConst &data)
         }
     }
 
-    config_save();
+    if (memcmp(&before_config, &config, sizeof(config_t)) != 0)
+    {
+        ESP_LOGI(TAG, "Configuration changed");
+        config_save();
+    }
+    else
+    {
+        ESP_LOGI(TAG, "Configuration unchanged");
+    }
 }
 void processSharedAttributeUpdate(const JsonObjectConst &data)
 {
@@ -96,6 +113,32 @@ void processSharedAttributeRequest(const JsonObjectConst &data)
 {
     ESP_LOGI(TAG, "Processing shared attribute request");
     processSharedAttribute(data);
+}
+
+void processRPCPing(const JsonVariantConst &data, JsonDocument &response)
+{
+    ESP_LOGI(TAG, "Received RPC method 'ping'");
+    response["status"] = "pong";
+}
+
+void processRPCRestart(const JsonVariantConst &data, JsonDocument &response)
+{
+    ESP_LOGI(TAG, "Received RPC method 'restart', restarting device");
+    response["status"] = "restarting";
+    vTaskDelay(pdMS_TO_TICKS(3000));
+    esp_restart();
+}
+
+void processRPCFetch(const JsonVariantConst &data, JsonDocument &response)
+{
+    ESP_LOGI(TAG, "Received RPC method 'fetch'");
+    sensors_report_telemetry();
+    modem_update_telemetry();
+    battery_update_telemetry();
+    main_report_telemetry();
+    tb_force_update();
+
+    response["status"] = "success";
 }
 
 extern "C" void tb_task(void *pvParameters)
@@ -121,6 +164,7 @@ extern "C" void tb_task(void *pvParameters)
     bool fw_info_sent = false;
     bool fw_update_requested = false;
     bool shared_attributes_subscribed = false;
+    bool rpc_subscribed = false;
 
     bool connecting = false;
     bool last_connected = false;
@@ -310,6 +354,27 @@ extern "C" void tb_task(void *pvParameters)
                 else
                 {
                     ESP_LOGE(TAG, "Failed to send shared attribute request");
+                }
+            }
+
+            if (!rpc_subscribed)
+            {
+                const RPC_Callback callbacks[MAX_RPC_SUBSCRIPTIONS] = {
+                    // Requires additional memory in the JsonDocument for the JsonDocument that will be copied into the response
+                    {"ping", processRPCPing},
+                    {"restart", processRPCRestart},
+                    {"fetch", processRPCFetch},
+                };
+
+                if (rpc.RPC_Subscribe(callbacks + 0U, callbacks + MAX_RPC_SUBSCRIPTIONS))
+                {
+                    ESP_LOGI(TAG, "RPC subscribed successfully");
+                    rpc_subscribed = true;
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "Failed to subscribe for RPC");
+                    rpc_subscribed = false;
                 }
             }
             // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
