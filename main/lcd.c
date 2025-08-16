@@ -91,11 +91,12 @@ void example_lvgl_demo_ui(lv_disp_t *disp)
 #define EXAMPLE_LCD_PARAM_BITS 8
 
 extern void example_lvgl_demo_ui(lv_disp_t *disp);
+i2c_master_bus_handle_t i2c_bus = NULL;
 
 void lcd_init(void)
 {
     ESP_LOGI(TAG, "Initialize I2C bus");
-    i2c_master_bus_handle_t i2c_bus = NULL;
+
     i2c_master_bus_config_t bus_config = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,

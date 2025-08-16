@@ -15,7 +15,7 @@ extern "C"
         float temperature;
     } dht_data_t;
 
-    esp_err_t sensors_read_temp(dht_data_t *data);
+    esp_err_t sensors_read_dht22(dht_data_t *data);
     void sensors_task(void *pvParameters);
     bool sensors_report_telemetry();
 #ifdef __cplusplus
