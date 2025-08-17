@@ -60,6 +60,7 @@ public:
     void add(Device *device);
     Device *find_by_mac(const char *mac);
     std::vector<Device *> &get_all();
+    Device *get_gateway();
 
 private:
     std::vector<Device *> devices;

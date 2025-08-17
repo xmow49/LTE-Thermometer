@@ -22,12 +22,15 @@ extern "C"
         float sensor_temperature_change_threshold;
         float sensor_humidity_change_threshold;
         uint32_t sensor_interval_force_update;
+
+        bool lcd_notify_power_cut;
     } config_t;
 
     typedef enum
     {
         CONFIG_ENTRY_TYPE_NONE = 0,
         CONFIG_ENTRY_TYPE_UINT32,
+        CONFIG_ENTRY_TYPE_BOOL,
         CONFIG_ENTRY_TYPE_FLOAT,
     } config_entry_type_t;
     typedef struct

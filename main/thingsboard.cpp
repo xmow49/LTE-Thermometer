@@ -19,6 +19,7 @@
 #include "sensors.hpp"
 #include "modem.h"
 #include "battery.h"
+#include "logs.h"
 
 #include "crash.h"
 
@@ -30,6 +31,8 @@
 
 #define FW_MAX_CHUNK_RETRIES 10
 #define FW_PACKET_SIZE 4096
+
+#define LOGS_MAX_PACKET_SIZE 4096
 
 #define MAX_RPC_SUBSCRIPTIONS 16
 
@@ -141,6 +144,129 @@ void processRPCFetch(const JsonVariantConst &data, JsonDocument &response)
     response["status"] = "success";
 }
 
+void processRPCLogs(const JsonVariantConst &data, JsonDocument &response)
+{
+    ESP_LOGI(TAG, "Received RPC method 'logs'");
+    DeviceList &devices = get_devices_list();
+    Device *gateway = devices.get_gateway();
+    if (!gateway)
+    {
+        response["status"] = "not_found";
+        return;
+    }
+
+    int logs_size = logs_get_available_bytes();
+    if (logs_size <= 0)
+    {
+        response["status"] = "no_logs";
+        return;
+    }
+
+    // Save current read index to restore it if needed
+    int initial_read_index = logs_get_read_index();
+    bool success = true;
+    int total_bytes_sent = 0;
+    int packet_count = 0;
+
+    // Calculate number of packets needed
+    int remaining_bytes = logs_size;
+    int total_parts = (logs_size + LOGS_MAX_PACKET_SIZE - 1) / LOGS_MAX_PACKET_SIZE;
+
+    char *log_data = (char *)heap_caps_malloc(LOGS_MAX_PACKET_SIZE + 1, MALLOC_CAP_SPIRAM);
+    if (!log_data)
+    {
+        ESP_LOGE(TAG, "Failed to allocate memory for log data");
+        response["status"] = "no_memory";
+        return;
+    }
+
+    while (remaining_bytes > 0 && success)
+    {
+        // Calculate the size of the current packet
+        int packet_size = (remaining_bytes > LOGS_MAX_PACKET_SIZE) ? LOGS_MAX_PACKET_SIZE : remaining_bytes;
+
+        // Read logs into buffer
+        int bytes_read = logs_read(log_data, packet_size);
+        if (bytes_read <= 0)
+        {
+            ESP_LOGE(TAG, "Failed to read logs for packet %d", packet_count);
+            success = false;
+            break;
+        }
+
+        // Null-terminate for safety
+        log_data[bytes_read] = '\0';
+
+        // Create JSON document using ArduinoJson
+        // Size estimation: log data + metadata (part, total_parts, bytes, status)
+        DynamicJsonDocument packetJson(bytes_read + 512);
+
+        // Structure the JSON with metadata inside the logs object
+        JsonObject logsObj = packetJson.createNestedObject("logs");
+        logsObj["part"] = packet_count + 1;
+        logsObj["total_parts"] = total_parts;
+        logsObj["bytes"] = bytes_read;
+        logsObj["data"] = log_data;                        // ArduinoJson will handle proper escaping
+        logsObj["end"] = (remaining_bytes <= packet_size); // true if this is the last packet
+
+        // Serialize JSON to string
+        std::string jsonString;
+        serializeJson(packetJson, jsonString);
+
+        // Send this packet
+        ESP_LOGI(TAG, "Sending log packet %d/%d (%d bytes)",
+                 packet_count + 1, total_parts, bytes_read);
+
+        if (!gateway->sendJsonTelemetry((char *)jsonString.c_str()))
+        {
+            ESP_LOGE(TAG, "Failed to send log packet %d", packet_count + 1);
+            success = false;
+            break;
+        }
+
+        total_bytes_sent += bytes_read;
+        packet_count++;
+
+        // Update remaining bytes
+        remaining_bytes -= bytes_read;
+
+        // Small delay between packets to avoid overwhelming the network
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    // Free the buffer
+    heap_caps_free(log_data);
+
+    if (success && packet_count > 0)
+    {
+        response["status"] = "success";
+        response["total_bytes"] = total_bytes_sent;
+        response["packets"] = packet_count;
+    }
+    else
+    {
+        response["status"] = "partial_success";
+        response["bytes_sent"] = total_bytes_sent;
+        response["packets_sent"] = packet_count;
+
+        // Restore read index if we failed partway through
+        if (packet_count > 0)
+        {
+            logs_reset_read_index();
+            // Seek to the original position more efficiently
+            char temp_buffer[1024];
+            int bytes_to_skip = initial_read_index;
+
+            while (bytes_to_skip > 0)
+            {
+                int chunk = (bytes_to_skip > sizeof(temp_buffer)) ? sizeof(temp_buffer) : bytes_to_skip;
+                logs_read(temp_buffer, chunk);
+                bytes_to_skip -= chunk;
+            }
+        }
+    }
+}
+
 extern "C" void tb_task(void *pvParameters)
 {
     esp_err_t ret;
@@ -227,7 +353,7 @@ extern "C" void tb_task(void *pvParameters)
         if (!tb.connected() && !connecting)
         {
             connecting = true;
-            ESP_LOGI(TAG, "Connecting to %s:%d with client ID %s, username %s, password %s", thingsboard_server, thingsboard_port, client_id, username, password);
+            ESP_LOGI(TAG, "Connecting to %s:%d", thingsboard_server, thingsboard_port);
             lcd_setup_msg("Connexion", "au serveur");
             ESP_LOGI(TAG, "Free heap total: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
             ESP_LOGI(TAG, "Free internal heap: %ld", esp_get_free_internal_heap_size());
@@ -364,6 +490,7 @@ extern "C" void tb_task(void *pvParameters)
                     {"ping", processRPCPing},
                     {"restart", processRPCRestart},
                     {"fetch", processRPCFetch},
+                    {"logs", processRPCLogs},
                 };
 
                 if (rpc.RPC_Subscribe(callbacks + 0U, callbacks + MAX_RPC_SUBSCRIPTIONS))

@@ -21,6 +21,7 @@ const config_entry_t config_entries[] = {
     {"sensor_temperature_change_threshold", CONFIG_ENTRY_TYPE_FLOAT, &config.sensor_temperature_change_threshold},
     {"sensor_humidity_change_threshold", CONFIG_ENTRY_TYPE_FLOAT, &config.sensor_humidity_change_threshold},
     {"sensor_interval_force_update", CONFIG_ENTRY_TYPE_UINT32, &config.sensor_interval_force_update},
+    {"lcd_notify_power_cut", CONFIG_ENTRY_TYPE_BOOL, &config.lcd_notify_power_cut},
     {NULL, CONFIG_ENTRY_TYPE_NONE, NULL} // Sentinel
 };
 

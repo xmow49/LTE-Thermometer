@@ -456,7 +456,10 @@ void lcd_set_plugged(bool plugged)
 {
     lcd_plugged = plugged;
 
-    lcd_update();
+    if (config.lcd_notify_power_cut)
+    {
+        lcd_update();
+    }
 }
 
 void lcd_task(void *pvParameters)

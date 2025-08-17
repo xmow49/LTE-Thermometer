@@ -23,6 +23,8 @@ static const char *TAG = "MAX17048";
 
 static i2c_master_bus_handle_t i2c_bus_handle;
 static i2c_master_dev_handle_t i2c_device_handle;
+static adc_oneshot_unit_handle_t adc2_handle;
+static adc_cali_handle_t adc_cali_handle = NULL;
 
 esp_err_t i2c_master_init(void)
 {
@@ -239,12 +241,36 @@ static bool adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_att
     return calibrated;
 }
 
+uint16_t battery_get_voltage(bool with_calibration)
+{
+    esp_err_t ret;
+    int adc_raw, voltage_mv;
+    ret = adc_oneshot_read(adc2_handle, PIN_BATTERY_ADC, &adc_raw);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Error reading ADC: %s", esp_err_to_name(ret));
+        return 0; // Return 0 if ADC read fails
+    }
+
+    if (with_calibration)
+    {
+        adc_cali_raw_to_voltage(adc_cali_handle, adc_raw, &voltage_mv);
+    }
+    else
+    {
+        voltage_mv = (adc_raw * 3300) / 4095; // Assuming 3.3V reference and 12-bit ADC
+    }
+
+    voltage_mv *= 2; // Because of voltage divider
+
+    return voltage_mv;
+}
+
 void power_cut_task(void *pvParameters)
 {
     esp_err_t ret;
     bool last_power_cut = false;
 
-    adc_oneshot_unit_handle_t adc2_handle;
     adc_oneshot_unit_init_cfg_t init_config = {
         .unit_id = ADC_UNIT_2,
         .ulp_mode = ADC_ULP_MODE_DISABLE,
@@ -257,15 +283,14 @@ void power_cut_task(void *pvParameters)
         return;
     }
 
-    adc_cali_handle_t adc_cali_handle = NULL;
     bool do_calibration = adc_calibration_init(ADC_UNIT_2, PIN_BATTERY_ADC, ADC_ATTEN_DB_12, &adc_cali_handle);
 
     // ADC Configuration
-    adc_oneshot_chan_cfg_t config = {
+    adc_oneshot_chan_cfg_t adc_config = {
         .bitwidth = ADC_BITWIDTH_DEFAULT,
         .atten = ADC_ATTEN_DB_12,
     };
-    ret = adc_oneshot_config_channel(adc2_handle, PIN_BATTERY_ADC, &config);
+    ret = adc_oneshot_config_channel(adc2_handle, PIN_BATTERY_ADC, &adc_config);
     if (ret != ESP_OK)
     {
         ESP_LOGE(TAG, "Error configuring ADC channel: %s", esp_err_to_name(ret));
@@ -277,32 +302,38 @@ void power_cut_task(void *pvParameters)
 
     while (1)
     {
-        int adc_raw, voltage_mv;
-        ret = adc_oneshot_read(adc2_handle, PIN_BATTERY_ADC, &adc_raw);
-        if (ret != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Error reading ADC: %s", esp_err_to_name(ret));
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            continue;
-        }
-
-        if (do_calibration)
-        {
-            adc_cali_raw_to_voltage(adc_cali_handle, adc_raw, &voltage_mv);
-        }
-        else
-        {
-            voltage_mv = (adc_raw * 3300) / 4095; // Assuming 3.3V reference and 12-bit ADC
-        }
-
-        voltage_mv *= 2; // Because of voltage divider
 
         // 4.36V --> batt
         // 4.60V --> power
 
         bool power_cut = false;
 
-        if (voltage_mv < 4500)
+        // Take 3 measurements and calculate average
+        uint16_t voltage_sum = 0;
+        uint8_t valid_readings = 0;
+
+        for (int i = 0; i < 3; i++)
+        {
+            uint16_t reading = battery_get_voltage(do_calibration);
+            if (reading > 0)
+            {
+                voltage_sum += reading;
+                valid_readings++;
+            }
+            vTaskDelay(pdMS_TO_TICKS(10)); // Small delay between readings
+        }
+
+        uint16_t voltage_mv = 0;
+        if (valid_readings > 0)
+        {
+            voltage_mv = voltage_sum / valid_readings;
+        }
+        else
+        {
+            ESP_LOGW(TAG, "All battery voltage readings were 0!");
+        }
+
+        if (voltage_mv < 4600)
         {
             power_cut = true;
         }
@@ -316,17 +347,23 @@ void power_cut_task(void *pvParameters)
             {
                 if (power_cut)
                 {
-                    ESP_LOGI(TAG, "Power Cut");
-                    lcd_setup_msg("Alimentation", "sur batterie");
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    lcd_update();
+                    ESP_LOGI(TAG, "Power Cut: %d mV", voltage_mv);
+                    if (config.lcd_notify_power_cut)
+                    {
+                        lcd_setup_msg("Alimentation", "sur batterie");
+                        vTaskDelay(pdMS_TO_TICKS(2000));
+                        lcd_update();
+                    }
                 }
                 else
                 {
-                    ESP_LOGI(TAG, "Power Restored");
-                    lcd_setup_msg("Alimentation", "sur secteur");
-                    vTaskDelay(pdMS_TO_TICKS(2000));
-                    lcd_update();
+                    ESP_LOGI(TAG, "Power Restored: %d mV", voltage_mv);
+                    if (config.lcd_notify_power_cut)
+                    {
+                        lcd_setup_msg("Alimentation", "sur secteur");
+                        vTaskDelay(pdMS_TO_TICKS(2000));
+                        lcd_update();
+                    }
                 }
             }
             device_report_telemetry(DEVICE_GATEWAY_MAC, "pw", !power_cut);

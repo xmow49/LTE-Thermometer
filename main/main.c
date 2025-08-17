@@ -33,6 +33,7 @@
 #include "config.h"
 #include "crash.h"
 #include "main.h"
+#include "logs.h"
 #define TAG "main"
 
 #include "esp_wifi.h"
@@ -228,7 +229,8 @@ void init_modem()
 
 void app_main(void)
 {
-    xTaskCreate(reboot_task, "reboot_task", 4 * 1024, NULL, 1, NULL);
+    logs_init();
+    // xTaskCreate(reboot_task, "reboot_task", 4 * 1024, NULL, 1, NULL);
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)

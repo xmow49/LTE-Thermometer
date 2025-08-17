@@ -186,6 +186,11 @@ DeviceList &get_devices_list()
     return deviceList;
 }
 
+Device *DeviceList::get_gateway()
+{
+    return find_by_mac(DEVICE_GATEWAY_MAC);
+}
+
 extern "C" void device_report_telemetry(char *mac, char *key, float value)
 {
     Device *device = deviceList.find_by_mac(mac);
