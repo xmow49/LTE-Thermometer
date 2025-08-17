@@ -22,6 +22,7 @@ const config_entry_t config_entries[] = {
     {"sensor_humidity_change_threshold", CONFIG_ENTRY_TYPE_FLOAT, &config.sensor_humidity_change_threshold},
     {"sensor_interval_force_update", CONFIG_ENTRY_TYPE_UINT32, &config.sensor_interval_force_update},
     {"lcd_notify", CONFIG_ENTRY_TYPE_BOOL, &config.lcd_notify},
+    {"time_save_telemetry", CONFIG_ENTRY_TYPE_UINT32, &config.time_save_telemetry},
     {NULL, CONFIG_ENTRY_TYPE_NONE, NULL} // Sentinel
 };
 
@@ -51,6 +52,10 @@ void config_set_default()
     config.sensor_temperature_change_threshold = 1.0f;
     config.sensor_humidity_change_threshold = 1.0f;
     config.sensor_interval_force_update = (10 * 60);
+
+    config.lcd_notify = false;
+
+    config.time_save_telemetry = 300;
 }
 
 bool config_save()

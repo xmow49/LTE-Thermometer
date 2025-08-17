@@ -30,7 +30,7 @@
 #define MAX_ATTRIBUTES (32)
 
 #define FW_MAX_CHUNK_RETRIES (10)
-#define FW_PACKET_SIZE (4096)
+#define FW_PACKET_SIZE (16 * 1024)
 
 #define LOGS_MAX_PACKET_SIZE (4096)
 
@@ -87,7 +87,11 @@ void processSharedAttribute(const JsonObjectConst &data)
                 case CONFIG_ENTRY_TYPE_FLOAT:
                     *(float *)entry->value = it->value().as<float>();
                     break;
+                case CONFIG_ENTRY_TYPE_BOOL:
+                    *(bool *)entry->value = it->value().as<bool>();
+                    break;
                 default:
+                    ESP_LOGW(TAG, "Unsupported config entry type for %s", entry->name);
                     break;
                 }
                 break;
@@ -435,14 +439,19 @@ extern "C" void tb_task(void *pvParameters)
                 if (device->getTelemetryList().size() > 0)
                 {
                     std::string json = device->computeTelemetryJson();
+                    if (json == "")
+                    {
+                        ESP_LOGE(TAG, "Failed to compute telemetry JSON for device %s", device->getName().c_str());
+                    }
                     if (!device->sendJsonTelemetry((char *)json.c_str()))
                     {
                         ESP_LOGE(TAG, "Failed to send telemetry for device %s", device->getName().c_str());
+                        device->moveBackTelemetry();
                     }
                     else
                     {
                         device_with_telemetry_sent++;
-                        device->clearTelemetry();
+                        device->clearTelemetryJson();
                     }
                 }
             }

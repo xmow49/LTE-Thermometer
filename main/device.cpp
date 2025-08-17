@@ -7,6 +7,7 @@
 #include "my_time.h"
 #include "thingsboard.hpp"
 #include "config.h"
+#include "sd.h"
 
 #define TAG "DEVICE"
 DeviceList deviceList;
@@ -30,6 +31,7 @@ Device::Device(char *name, char *mac)
     this->name = name;
     mac_from_string(mac, this->mac);
     this->isGateway = memcmp(this->mac, gateway_mac, 6) == 0;
+
     telemetry_list.reserve(50);
     ESP_LOGI(TAG, "Device %s: %s, isGateway: %d", name, getMacString().c_str(), isGateway);
 }
@@ -133,12 +135,27 @@ void Device::addTelemetry(TelemetryReport telemetry)
 {
     if (telemetry.timestamp == 0)
     {
-        ESP_LOGW(TAG, "Telemetry timestamp is 0: %s", telemetry.name.c_str());
+        ESP_LOGW(TAG, "Telemetry timestamp is 0: %s", telemetry.name);
     }
 
-    // round float to 2 decimal places
-    // ESP_LOGI(TAG, "TelemetryReport: add %s: %f, timestamp: %lld, stored: %d", telemetry.name.c_str(), telemetry.value, telemetry.timestamp, telemetry_list.size());
+    if (xSemaphoreTake(telemetry_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    {
+        ESP_LOGE(TAG, "Failed to take telemetry mutex");
+        return;
+    }
+
     telemetry_list.emplace_back(telemetry);
+
+    if (
+        xTaskGetTickCount() - last_telemetry_saved > pdMS_TO_TICKS(config.time_save_telemetry * 1000))
+    {
+        sd_save_telemetrys(telemetry_list);
+        sd_list_telemetry_files();
+        last_telemetry_saved = xTaskGetTickCount();
+        telemetry_list.clear();
+    }
+
+    xSemaphoreGive(telemetry_mutex);
 }
 
 extern "C" void device_add(char *name, char *mac)
@@ -205,9 +222,10 @@ extern "C" void device_report_telemetry(char *mac, char *key, float value)
     }
 }
 
-TelemetryReport::TelemetryReport(std::string name, float value)
+TelemetryReport::TelemetryReport(const char *name, float value)
 {
-    this->name = name;
+    strncpy(this->name, name, sizeof(this->name) - 1);
+    this->name[sizeof(this->name) - 1] = '\0';
     this->value = value;
     static time_t last_timestamp = 0;
     time_t current_time = my_time_is_set() ? time(nullptr) : 0;
@@ -238,7 +256,24 @@ std::string Device::computeTelemetryJson()
     // Map for storing the latest values of telemetry with timestamp 0
     std::map<std::string, float> zeroTimestampMap;
 
-    for (const auto &telemetry : telemetry_list)
+    if (xSemaphoreTake(telemetry_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    {
+        ESP_LOGE(TAG, "Failed to take telemetry mutex");
+        return "";
+    }
+
+    telemetry_list_json.clear();
+    telemetry_list_json = std::move(telemetry_list);
+
+    // Lire les données sauvegardées sur SD et les ajouter
+    auto sd_telemetry = sd_read_all_telemetry(true);
+    telemetry_list_json.insert(telemetry_list_json.end(), sd_telemetry.begin(), sd_telemetry.end());
+
+    telemetry_list.clear(); // Optionnel car telemetry_list est déjà vide après std::move
+
+    xSemaphoreGive(telemetry_mutex);
+
+    for (const auto &telemetry : telemetry_list_json)
     {
         if (telemetry.timestamp == 0)
         {
@@ -278,7 +313,29 @@ std::string Device::computeTelemetryJson()
     return jsonString;
 }
 
-void Device::clearTelemetry()
+void Device::clearTelemetryJson()
 {
-    telemetry_list.clear();
+    telemetry_list_json.clear();
+}
+
+void Device::moveBackTelemetry()
+{
+    if (xSemaphoreTake(telemetry_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    {
+        ESP_LOGE(TAG, "Failed to take telemetry mutex");
+        return;
+    }
+    telemetry_list = std::move(telemetry_list_json);
+    telemetry_list_json.clear();
+
+    if (sd_save_telemetrys(telemetry_list) != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to save telemetry to SD");
+    }
+    else
+    {
+        telemetry_list.clear(); // Clear the telemetry list after saving
+    }
+
+    xSemaphoreGive(telemetry_mutex);
 }

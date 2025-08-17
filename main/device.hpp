@@ -20,10 +20,10 @@ typedef struct telemetry_message
 class TelemetryReport
 {
 public:
-    std::string name;
+    char name[16];
     float value;
     time_t timestamp;
-    TelemetryReport(std::string name, float value);
+    TelemetryReport(const char *name, float value);
     ~TelemetryReport();
 };
 
@@ -44,14 +44,19 @@ public:
     std::vector<TelemetryReport> &getTelemetryList() { return telemetry_list; }
     void addTelemetry(TelemetryReport telemetry);
     std::string computeTelemetryJson();
-    void clearTelemetry();
+    void clearTelemetryJson();
+    void moveBackTelemetry();
 
 private:
     std::string name;
     uint8_t mac[6];
     bool connected = false;
     bool isGateway = false;
+
+    TickType_t last_telemetry_saved = 0;
     std::vector<TelemetryReport> telemetry_list;
+    std::vector<TelemetryReport> telemetry_list_json;
+    SemaphoreHandle_t telemetry_mutex = xSemaphoreCreateMutex();
 };
 
 class DeviceList

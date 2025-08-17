@@ -23,6 +23,7 @@ extern "C"
         float sensor_humidity_change_threshold;
         uint32_t sensor_interval_force_update;
 
+        uint32_t time_save_telemetry;
         bool lcd_notify;
     } config_t;
 
