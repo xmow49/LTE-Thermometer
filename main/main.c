@@ -221,12 +221,6 @@ bool main_network_connected()
     return network_connected && modem_initialized;
 }
 
-void init_modem()
-{
-
-    vTaskDelete(NULL);
-}
-
 void app_main(void)
 {
     logs_init();
@@ -244,7 +238,6 @@ void app_main(void)
 
     config_init();
     lcd_init();
-    // xTaskCreate(init_modem, "init_modem", 4 * 1024, NULL, 5, NULL);
 #if !USE_WIFI // espnow conflicts with wifi
     espnow_init();
 #endif

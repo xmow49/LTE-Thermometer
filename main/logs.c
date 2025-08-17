@@ -61,6 +61,11 @@ static int logs_vprintf(const char *fmt, va_list args)
 void logs_init()
 {
     logs_buffer = heap_caps_malloc(LOGS_BUFFER_SIZE, MALLOC_CAP_SPIRAM);
+    if (!logs_buffer)
+    {
+        ESP_LOGE("logs", "Failed to allocate logs buffer");
+        return;
+    }
     logs_write_index = 0;
     logs_read_index = 0;
     logs_buffer_full = false;
