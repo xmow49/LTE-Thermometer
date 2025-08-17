@@ -348,7 +348,7 @@ void power_cut_task(void *pvParameters)
                 if (power_cut)
                 {
                     ESP_LOGI(TAG, "Power Cut: %d mV", voltage_mv);
-                    if (config.lcd_notify_power_cut)
+                    if (config.lcd_notify)
                     {
                         lcd_setup_msg("Alimentation", "sur batterie");
                         vTaskDelay(pdMS_TO_TICKS(2000));
@@ -358,7 +358,7 @@ void power_cut_task(void *pvParameters)
                 else
                 {
                     ESP_LOGI(TAG, "Power Restored: %d mV", voltage_mv);
-                    if (config.lcd_notify_power_cut)
+                    if (config.lcd_notify)
                     {
                         lcd_setup_msg("Alimentation", "sur secteur");
                         vTaskDelay(pdMS_TO_TICKS(2000));

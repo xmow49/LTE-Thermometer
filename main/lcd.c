@@ -456,7 +456,7 @@ void lcd_set_plugged(bool plugged)
 {
     lcd_plugged = plugged;
 
-    if (config.lcd_notify_power_cut)
+    if (config.lcd_notify)
     {
         lcd_update();
     }

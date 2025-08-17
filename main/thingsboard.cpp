@@ -27,14 +27,17 @@
 #include <Espressif_Updater.h>
 
 #define TAG "TB_TASK"
-#define MAX_ATTRIBUTES 32
+#define MAX_ATTRIBUTES (32)
 
-#define FW_MAX_CHUNK_RETRIES 10
-#define FW_PACKET_SIZE 4096
+#define FW_MAX_CHUNK_RETRIES (10)
+#define FW_PACKET_SIZE (4096)
 
-#define LOGS_MAX_PACKET_SIZE 4096
+#define LOGS_MAX_PACKET_SIZE (4096)
 
-#define MAX_RPC_SUBSCRIPTIONS 16
+#define MAX_RPC_SUBSCRIPTIONS (16)
+
+#define MAX_CONNECT_TRIES (3)
+#define RECONNECT_DELAY_AFTER_FAILURE_S (60 * 60) // seconds
 
 #define REQUEST_TIMEOUT_MICROSECONDS (1000 * 1000)
 
@@ -70,7 +73,7 @@ void processSharedAttribute(const JsonObjectConst &data)
         // Safely convert value to string for logging
         std::string valueStr;
         serializeJson(it->value(), valueStr);
-        ESP_LOGI(TAG, "Received shared attribute update: %s = %s", it->key().c_str(), valueStr.c_str());
+        ESP_LOGI(TAG, "Received attribute: %s = %s", it->key().c_str(), valueStr.c_str());
 
         for (const config_entry_t *entry = config_entries; entry->name != NULL; entry++)
         {
@@ -271,6 +274,7 @@ extern "C" void tb_task(void *pvParameters)
 {
     esp_err_t ret;
     sd_init();
+    const esp_app_desc_t *app_desc = esp_app_get_description();
 
     mqtt_mutex = xSemaphoreCreateMutex();
     if (mqtt_mutex == NULL)
@@ -293,8 +297,9 @@ extern "C" void tb_task(void *pvParameters)
     bool rpc_subscribed = false;
 
     bool connecting = false;
-    bool last_connected = false;
     bool first_cycle = true;
+
+    uint32_t connect_tries = 0;
 
     ret = sd_read_root_ca(root_ca, sizeof(root_ca));
     if (ret == ESP_OK && strlen(root_ca) > 0)
@@ -337,10 +342,7 @@ extern "C" void tb_task(void *pvParameters)
     }
 
     mqttClient.set_keep_alive_timeout(300); // 30 minutes
-
     TickType_t last_update = xTaskGetTickCount();
-
-    const esp_app_desc_t *app_desc = esp_app_get_description();
 
     while (1)
     {
@@ -354,31 +356,56 @@ extern "C" void tb_task(void *pvParameters)
         {
             connecting = true;
             ESP_LOGI(TAG, "Connecting to %s:%d", thingsboard_server, thingsboard_port);
-            lcd_setup_msg("Connexion", "au serveur");
+            if (config.lcd_notify)
+            {
+                lcd_setup_msg("Connexion", "au serveur");
+            }
             ESP_LOGI(TAG, "Free heap total: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
             ESP_LOGI(TAG, "Free internal heap: %ld", esp_get_free_internal_heap_size());
 
-            bool connected = tb.connect(thingsboard_server, username, thingsboard_port, client_id, password);
-            ESP_LOGI(TAG, "Connected result: %d", connected);
-            if (!connected)
+            connect_tries++;
+            ESP_LOGI(TAG, "Connect try %d/%d", connect_tries, MAX_CONNECT_TRIES);
+            tb.connect(thingsboard_server, username, thingsboard_port, client_id, password);
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            if (!tb.connected())
             {
                 ESP_LOGE(TAG, "Failed to connect to TB, retrying in 1 second");
-                lcd_setup_msg("Erreur", "de connexion");
-                vTaskDelay(1000 / portTICK_PERIOD_MS);
+                if (config.lcd_notify)
+                {
+                    lcd_setup_msg("Erreur", "de connexion");
+                }
+
+                if (connect_tries >= MAX_CONNECT_TRIES)
+                {
+                    tb.disconnect();
+                    mqttClient.set_disable_auto_reconnect(true);
+                    ESP_LOGE(TAG, "Failed to connect to TB after %d tries, waiting %d seconds before retrying", connect_tries, RECONNECT_DELAY_AFTER_FAILURE_S);
+                    vTaskDelay(pdMS_TO_TICKS(RECONNECT_DELAY_AFTER_FAILURE_S * 1000));
+                    connect_tries = 0;
+                    mqttClient.set_disable_auto_reconnect(false);
+                }
+                else
+                {
+                    vTaskDelay(pdMS_TO_TICKS(1000));
+                }
+
                 connecting = false;
                 continue;
             }
-            last_connected = true;
+            else
+            {
+                ESP_LOGI(TAG, "Connected to TB");
+                connect_tries = 0;
+                ESP_LOGI(TAG, "Connected to TB");
+                if (config.lcd_notify)
+                {
+                    lcd_setup_msg("Connexion", "réussie");
+                }
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
             connecting = false;
         }
 
-        if (last_connected)
-        {
-            ESP_LOGI(TAG, "Connected to TB");
-            lcd_setup_msg("Connexion", "réussie");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            last_connected = false;
-        }
         bool time_to_send = (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(config.interval_send_to_tb * 1000));
         if (time_to_send || first_cycle || force_update)
         {
@@ -454,7 +481,6 @@ extern "C" void tb_task(void *pvParameters)
 
                 for (const config_entry_t *entry = config_entries; entry->name != NULL && index < config_entries_count; entry++, index++)
                 {
-                    ESP_LOGI(TAG, "Added attribute: %s", entry->name);
                     SUBSCRIBED_SHARED_ATTRIBUTES[index] = entry->name;
                 }
 

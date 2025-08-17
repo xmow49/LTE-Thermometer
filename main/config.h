@@ -23,7 +23,7 @@ extern "C"
         float sensor_humidity_change_threshold;
         uint32_t sensor_interval_force_update;
 
-        bool lcd_notify_power_cut;
+        bool lcd_notify;
     } config_t;
 
     typedef enum
