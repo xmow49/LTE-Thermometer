@@ -5,8 +5,10 @@
 extern "C"
 {
 #endif
-
+#include <stdbool.h>
     void button_init();
+    void button_start();
+    bool button_get_state();
 
 #ifdef __cplusplus
 }

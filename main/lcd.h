@@ -16,7 +16,7 @@ extern "C"
     void lcd_start();
     void lcd_set_plugged(bool plugged);
     void lcd_setup_msg(const char *title, const char *msg);
-
+    char *lcd_get_boot_msg(void);
 #ifdef __cplusplus
 }
 #endif

@@ -194,23 +194,15 @@ esp_err_t modem_update_telemetry()
 void modem_task(void *pvParameters)
 {
     int rssi, ber;
-    esp_err_t ret;
     TickType_t last_update = 0;
     bool first_update = true;
     while (1)
     {
         if ((xTaskGetTickCount() - last_update) >= pdMS_TO_TICKS(config.interval_modem * 1000) || first_update)
         {
-            ret = modem_update_telemetry(&rssi, &ber);
-            if (ret == ESP_OK)
-            {
-                last_update = xTaskGetTickCount();
-                first_update = false;
-            }
-            else
-            {
-                ESP_LOGE(TAG, "Failed to update modem telemetry: %s", esp_err_to_name(ret));
-            }
+            modem_update_telemetry(&rssi, &ber);
+            last_update = xTaskGetTickCount();
+            first_update = false;
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }

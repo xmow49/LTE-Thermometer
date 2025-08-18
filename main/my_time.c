@@ -7,7 +7,7 @@
 
 static bool is_time_set = false;
 
-esp_err_t my_time_update()
+esp_err_t imy_time_update()
 {
     // Synchronize time with NTP server
     ESP_LOGI(TAG, "Initializing SNTP");
@@ -16,6 +16,9 @@ esp_err_t my_time_update()
     tzset();
     esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
     esp_sntp_setservername(0, "pool.ntp.org");
+    esp_sntp_setservername(1, "time.google.com");
+    esp_sntp_setservername(2, "time.windows.com");
+    esp_sntp_setservername(3, "time.apple.com");
     esp_sntp_init();
 
     // Wait for time to be set

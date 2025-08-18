@@ -312,7 +312,7 @@ void power_cut_task(void *pvParameters)
         uint16_t voltage_sum = 0;
         uint8_t valid_readings = 0;
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 10; i++)
         {
             uint16_t reading = battery_get_voltage(do_calibration);
             if (reading > 0)
@@ -320,7 +320,7 @@ void power_cut_task(void *pvParameters)
                 voltage_sum += reading;
                 valid_readings++;
             }
-            vTaskDelay(pdMS_TO_TICKS(10)); // Small delay between readings
+            vTaskDelay(pdMS_TO_TICKS(50)); // Small delay between readings
         }
 
         uint16_t voltage_mv = 0;
@@ -333,7 +333,7 @@ void power_cut_task(void *pvParameters)
             ESP_LOGW(TAG, "All battery voltage readings were 0!");
         }
 
-        if (voltage_mv < 4600)
+        if (voltage_mv < 4400)
         {
             power_cut = true;
         }

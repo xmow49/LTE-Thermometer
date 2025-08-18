@@ -19,6 +19,7 @@
 #include "lcd.h"
 #include "bitmap.h"
 #include "config.h"
+#include "device.hpp"
 
 extern lv_font_t freesans_18;
 extern lv_font_t freesans_16;
@@ -47,6 +48,7 @@ extern lv_img_dsc_t plug;
 void lcd_task(void *pvParameters);
 
 static const char *TAG = "example";
+char boot_msg[128] = {0};
 
 float lcd_temperature = 0;
 float lcd_humidity = 0;
@@ -222,7 +224,7 @@ void lcd_init(void)
         reason_str = "Unknown";
         break;
     case ESP_RST_POWERON:
-        reason_str = "Power-on";
+        reason_str = "Power ON";
         break;
     case ESP_RST_EXT:
         reason_str = "External pin";
@@ -259,6 +261,8 @@ void lcd_init(void)
         break;
     }
     ESP_LOGI(TAG, "Reset reason: %s", reason_str);
+
+    snprintf(boot_msg, sizeof(boot_msg), "{\"boot_reason\":\"%s\"}", reason_str);
 
     bool turn_on = false;
     switch (reason)
@@ -474,4 +478,9 @@ void lcd_task(void *pvParameters)
         }
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+}
+
+char *lcd_get_boot_msg(void)
+{
+    return boot_msg;
 }

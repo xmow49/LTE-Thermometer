@@ -16,16 +16,6 @@ const char *TAG = "button";
 
 void button_task(void *pvParameters)
 {
-    // init button pullup
-    gpio_config_t io_conf = {
-        .pin_bit_mask = 1ULL << PIN_BUTTON,
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
-
     bool last_state = false;
     bool state = false;
 
@@ -53,5 +43,24 @@ void button_task(void *pvParameters)
 
 void button_init()
 {
+    // init button pullup
+    gpio_config_t io_conf = {
+        .pin_bit_mask = 1ULL << PIN_BUTTON,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+}
+
+void button_start()
+{
     xTaskCreate(button_task, "button_task", 4 * 1024, NULL, 5, NULL);
+}
+
+bool button_get_state()
+{
+    bool state = !gpio_get_level(PIN_BUTTON);
+    return state;
 }

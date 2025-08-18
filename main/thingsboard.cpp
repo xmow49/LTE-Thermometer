@@ -422,6 +422,12 @@ extern "C" void tb_task(void *pvParameters)
             {
                 reason = "First cycle";
                 crash_check_dump();
+                char *boot_msg = lcd_get_boot_msg();
+                if (boot_msg && strlen(boot_msg) > 0)
+                {
+                    ESP_LOGI(TAG, "Sending boot message: %s", boot_msg);
+                    device_gateway_send_json_telemetry(boot_msg);
+                }
             }
             else if (force_update)
             {
@@ -539,11 +545,25 @@ extern "C" void tb_task(void *pvParameters)
                     rpc_subscribed = false;
                 }
             }
+
+            if (first_cycle)
+            {
+                if (device_with_telemetry_sent > 0)
+                {
+                    ESP_LOGI(TAG, "First cycle completed with telemetry");
+                    first_cycle = false;
+                }
+                else
+                {
+                    ESP_LOGW(TAG, "First cycle telemetry not sent");
+                    vTaskDelay(pdMS_TO_TICKS(10000));
+                }
+            }
+
             // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
             if (device_with_telemetry_sent > 0 && (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(10000)))
             {
                 // wait for the telemetry to be sent before setting first_cycle to false
-                first_cycle = false;
                 last_update = xTaskGetTickCount();
             }
             force_update = false;

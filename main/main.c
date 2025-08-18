@@ -18,6 +18,7 @@
 #include "led_indicator_blink_default.h"
 #include "usbh_modem_board.h"
 #include "usbh_modem_wifi.h"
+#include "driver/temperature_sensor.h"
 
 #include "thingsboard.hpp"
 #include "ping.h"
@@ -54,6 +55,7 @@ static EventGroupHandle_t s_wifi_event_group;
 static bool network_connected = false;
 static bool sim_ok = false;
 static bool modem_initialized = false;
+static temperature_sensor_handle_t temp_handle = NULL;
 
 void reboot_task(void *pvParameters);
 
@@ -224,6 +226,7 @@ bool main_network_connected()
 void app_main(void)
 {
     logs_init();
+    button_init();
     // xTaskCreate(reboot_task, "reboot_task", 4 * 1024, NULL, 1, NULL);
 
     esp_err_t ret = nvs_flash_init();
@@ -238,6 +241,15 @@ void app_main(void)
 
     config_init();
     lcd_init();
+
+    if (button_get_state())
+    {
+        ESP_LOGI(TAG, "Button pressed on startup, stop boot here");
+        lcd_setup_msg("DEBUG MODE", "Please restart");
+        // infinite
+        vTaskDelay(portMAX_DELAY);
+    }
+
 #if !USE_WIFI // espnow conflicts with wifi
     espnow_init();
 #endif
@@ -264,7 +276,7 @@ void app_main(void)
     lcd_setup_msg("Démarrage", "du modem");
 
 #if USE_WIFI
-    wifi_connect_sta("RobotESEO-IoT", "RobotE5E0*", 10000);
+    wifi_connect_sta("AFDD-IoT", "fAvaD4eWp7pI5W", 10000);
 #else
     modem_board_init(&modem_config);
 #endif
@@ -292,8 +304,15 @@ void app_main(void)
 
     ping_init();
     xTaskCreate(sensors_task, "sensors_task", 4 * 1024, NULL, 5, NULL);
-    button_init();
+    button_start();
     battery_init();
+
+    temperature_sensor_config_t temp_sensor_config = TEMPERATURE_SENSOR_CONFIG_DEFAULT(20, 50);
+    ret = temperature_sensor_install(&temp_sensor_config, &temp_handle);
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to install temperature sensor: %s", esp_err_to_name(ret));
+    }
 
     // send_sms("+33000000000", "Hello.");
     while (1)
@@ -307,9 +326,30 @@ void app_main(void)
 
 void main_report_telemetry()
 {
+    esp_err_t ret;
     device_report_telemetry(DEVICE_GATEWAY_MAC, "ram", esp_get_free_heap_size());
     device_report_telemetry(DEVICE_GATEWAY_MAC, "heap", esp_get_free_internal_heap_size());
     device_report_telemetry(DEVICE_GATEWAY_MAC, "up", pdTICKS_TO_MS(xTaskGetTickCount()) / 1000);
+
+    ret = temperature_sensor_enable(temp_handle);
+    if (ret == ESP_OK)
+    {
+        float tsens_out;
+        ret = temperature_sensor_get_celsius(temp_handle, &tsens_out);
+        if (ret == ESP_OK)
+        {
+            device_report_telemetry(DEVICE_GATEWAY_MAC, "tcpu", tsens_out);
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Failed to get temperature sensor reading: %s", esp_err_to_name(ret));
+        }
+        ret = temperature_sensor_disable(temp_handle);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to disable temperature sensor: %s", esp_err_to_name(ret));
+        }
+    }
 }
 
 void reboot_task(void *pvParameters)
