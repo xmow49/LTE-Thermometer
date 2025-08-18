@@ -218,9 +218,14 @@ static void on_modem_event(void *arg, esp_event_base_t event_base,
     }
 }
 
-bool main_network_connected()
+bool main_network_attached()
 {
     return network_connected && modem_initialized;
+}
+
+bool main_network_connected()
+{
+    return network_connected && modem_initialized && ping_get_value() != -1;
 }
 
 void app_main(void)
@@ -246,14 +251,13 @@ void app_main(void)
     {
         ESP_LOGI(TAG, "Button pressed on startup, stop boot here");
         lcd_setup_msg("DEBUG MODE", "Please restart");
-        // infinite
-        vTaskDelay(portMAX_DELAY);
+        vTaskDelay(pdMS_TO_TICKS(600 * 1000));
+        esp_restart();
     }
 
 #if !USE_WIFI // espnow conflicts with wifi
     espnow_init();
 #endif
-    tb_init();
 
 #if !USE_WIFI
     init_at_modem();
@@ -281,9 +285,21 @@ void app_main(void)
     modem_board_init(&modem_config);
 #endif
 
+    modem_initialized = true;
     ESP_LOGI(TAG, "Modem initialized");
+    ping_init();
+
     lcd_setup_msg("Modem OK", NULL);
+
     vTaskDelay(pdMS_TO_TICKS(2000));
+
+    lcd_setup_msg("Connexion", "à Internet...");
+    while (!main_network_connected())
+    {
+        ESP_LOGI(TAG, "Waiting for network connection...: %d ms", ping_get_value());
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+
     lcd_setup_msg("Récupération", "de l'heure");
     esp_err_t err = my_time_update();
     if (err != ESP_OK)
@@ -297,12 +313,11 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    modem_initialized = true;
+    tb_init();
 
     lcd_start();
     modem_update_telemetry();
 
-    ping_init();
     xTaskCreate(sensors_task, "sensors_task", 4 * 1024, NULL, 5, NULL);
     button_start();
     battery_init();

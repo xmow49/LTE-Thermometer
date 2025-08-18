@@ -6,6 +6,7 @@ extern "C"
 {
 #endif
 
+    bool main_network_attached();
     bool main_network_connected();
     void main_report_telemetry();
 

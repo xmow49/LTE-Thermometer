@@ -181,13 +181,14 @@ extern "C" void device_receive(char *mac, telemetry_message data)
     }
 }
 
-extern "C" void device_gateway_send_json_telemetry(char *json)
+extern "C" bool device_gateway_send_json_telemetry(char *json)
 {
     Device *device = deviceList.find_by_mac(DEVICE_GATEWAY_MAC);
     if (device)
     {
-        device->sendJsonTelemetry(json);
+        return device->sendJsonTelemetry(json);
     }
+    return false;
 }
 
 void device_list()
@@ -292,9 +293,9 @@ std::string Device::computeTelemetryJson()
 
             JsonObject valuesObj = timestampMap[telemetry.timestamp];
 
-            // Round the value to 2 decimal places
-            char roundedValue[10];
-            snprintf(roundedValue, sizeof(roundedValue), "%.2f", telemetry.value);
+            // Round the value to 7 decimal places
+            char roundedValue[32];
+            snprintf(roundedValue, sizeof(roundedValue), "%.7f", telemetry.value);
             valuesObj[telemetry.name] = atof(roundedValue);
         }
     }
@@ -303,8 +304,8 @@ std::string Device::computeTelemetryJson()
     for (const auto &pair : zeroTimestampMap)
     {
         JsonObject obj = array.createNestedObject();
-        char roundedValue[10];
-        snprintf(roundedValue, sizeof(roundedValue), "%.2f", pair.second);
+        char roundedValue[32];
+        snprintf(roundedValue, sizeof(roundedValue), "%.7f", pair.second);
         obj[pair.first] = atof(roundedValue);
     }
 

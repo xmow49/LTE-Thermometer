@@ -7,7 +7,7 @@
 
 static bool is_time_set = false;
 
-esp_err_t imy_time_update()
+esp_err_t my_time_update()
 {
     // Synchronize time with NTP server
     ESP_LOGI(TAG, "Initializing SNTP");

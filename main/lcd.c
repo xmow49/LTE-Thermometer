@@ -289,6 +289,12 @@ void lcd_setup_msg(const char *title, const char *msg)
         ESP_LOGI(TAG, "LCD not initialized");
         return;
     }
+
+    if (!config.lcd_notify)
+    {
+        return;
+    }
+
     if (lvgl_port_lock(0))
     {
         lv_obj_t *scr = lv_scr_act();

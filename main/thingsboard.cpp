@@ -11,6 +11,7 @@
 #include <arpa/inet.h>
 #include "esp_netif.h"
 #include <ArduinoJson.h>
+#include <string>
 #include "ping.h"
 #include "device.hpp"
 #include "main.h"
@@ -47,7 +48,7 @@ Espressif_MQTT_Client mqttClient;
 OTA_Firmware_Update<> ota;
 Attribute_Request<2U, MAX_ATTRIBUTES> attr_request;
 Shared_Attribute_Update<1U, MAX_ATTRIBUTES> shared_update;
-Server_Side_RPC<MAX_RPC_SUBSCRIPTIONS, 5> rpc;
+Server_Side_RPC<MAX_RPC_SUBSCRIPTIONS, 32> rpc;
 
 const std::array<IAPI_Implementation *, 4U> apis = {
     &ota,
@@ -274,6 +275,47 @@ void processRPCLogs(const JsonVariantConst &data, JsonDocument &response)
     }
 }
 
+void processRPCGnss(const JsonVariantConst &data, JsonDocument &response)
+{
+    ESP_LOGI(TAG, "Received RPC method 'gnss'");
+    gnss_data_t gnss_data;
+    esp_err_t ret = get_gnss_data(&gnss_data);
+    if (ret == ESP_ERR_INVALID_STATE)
+    {
+        ESP_LOGE(TAG, "GNSS data not available");
+        response["status"] = "fix_not_available";
+        return;
+    }
+
+    if (ret != ESP_OK)
+    {
+        ESP_LOGE(TAG, "Failed to get GNSS data: %s", esp_err_to_name(ret));
+        response["status"] = "error";
+        response["message"] = "Failed setup GNSS";
+        return;
+    }
+
+    response["status"] = "success";
+    // create nested object for GNSS data
+    JsonObject gnssObj = response.createNestedObject("data");
+    gnssObj["mode"] = gnss_data.mode;
+    gnssObj["gps_svs"] = gnss_data.gps_svs;
+    gnssObj["glonass_svs"] = gnss_data.glonass_svs;
+    gnssObj["beidou_svs"] = gnss_data.beidou_svs;
+    gnssObj["latitude"] = gnss_data.latitude;
+    gnssObj["longitude"] = gnss_data.longitude;
+    gnssObj["altitude"] = gnss_data.altitude;
+    gnssObj["speed"] = gnss_data.speed;
+    gnssObj["course"] = gnss_data.course;
+    gnssObj["pdop"] = gnss_data.pdop;
+    gnssObj["hdop"] = gnss_data.hdop;
+    gnssObj["vdop"] = gnss_data.vdop;
+    gnssObj["ns_indicator"] = std::string(1, gnss_data.ns_indicator);
+    gnssObj["ew_indicator"] = std::string(1, gnss_data.ew_indicator);
+    gnssObj["date"] = gnss_data.date;
+    gnssObj["utc_time"] = gnss_data.utc_time;
+}
+
 extern "C" void tb_task(void *pvParameters)
 {
     esp_err_t ret;
@@ -302,6 +344,7 @@ extern "C" void tb_task(void *pvParameters)
 
     bool connecting = false;
     bool first_cycle = true;
+    int device_with_telemetry_sent = 0;
 
     uint32_t connect_tries = 0;
 
@@ -360,10 +403,8 @@ extern "C" void tb_task(void *pvParameters)
         {
             connecting = true;
             ESP_LOGI(TAG, "Connecting to %s:%d", thingsboard_server, thingsboard_port);
-            if (config.lcd_notify)
-            {
-                lcd_setup_msg("Connexion", "au serveur");
-            }
+            lcd_setup_msg("Connexion", "au serveur");
+
             ESP_LOGI(TAG, "Free heap total: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
             ESP_LOGI(TAG, "Free internal heap: %ld", esp_get_free_internal_heap_size());
 
@@ -374,10 +415,7 @@ extern "C" void tb_task(void *pvParameters)
             if (!tb.connected())
             {
                 ESP_LOGE(TAG, "Failed to connect to TB, retrying in 1 second");
-                if (config.lcd_notify)
-                {
-                    lcd_setup_msg("Erreur", "de connexion");
-                }
+                lcd_setup_msg("Erreur", "de connexion");
 
                 if (connect_tries >= MAX_CONNECT_TRIES)
                 {
@@ -398,13 +436,10 @@ extern "C" void tb_task(void *pvParameters)
             }
             else
             {
-                ESP_LOGI(TAG, "Connected to TB");
                 connect_tries = 0;
                 ESP_LOGI(TAG, "Connected to TB");
-                if (config.lcd_notify)
-                {
-                    lcd_setup_msg("Connexion", "réussie");
-                }
+                lcd_setup_msg("Connexion", "réussie");
+
                 vTaskDelay(pdMS_TO_TICKS(1000));
             }
             connecting = false;
@@ -413,6 +448,7 @@ extern "C" void tb_task(void *pvParameters)
         bool time_to_send = (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(config.interval_send_to_tb * 1000));
         if (time_to_send || first_cycle || force_update)
         {
+            device_with_telemetry_sent = 0;
             std::string reason;
             if (time_to_send)
             {
@@ -426,7 +462,14 @@ extern "C" void tb_task(void *pvParameters)
                 if (boot_msg && strlen(boot_msg) > 0)
                 {
                     ESP_LOGI(TAG, "Sending boot message: %s", boot_msg);
-                    device_gateway_send_json_telemetry(boot_msg);
+                    if (!device_gateway_send_json_telemetry(boot_msg))
+                    {
+                        ESP_LOGE(TAG, "Failed to send boot message");
+                    }
+                    else
+                    {
+                        device_with_telemetry_sent++;
+                    }
                 }
             }
             else if (force_update)
@@ -439,7 +482,6 @@ extern "C" void tb_task(void *pvParameters)
             }
             ESP_LOGI(TAG, "Sending telemetry to TB: %s", reason.c_str());
             DeviceList &devices = get_devices_list();
-            int device_with_telemetry_sent = 0;
             for (const auto &device : devices.get_all())
             {
                 if (device->getTelemetryList().size() > 0)
@@ -532,6 +574,7 @@ extern "C" void tb_task(void *pvParameters)
                     {"restart", processRPCRestart},
                     {"fetch", processRPCFetch},
                     {"logs", processRPCLogs},
+                    {"gnss", processRPCGnss},
                 };
 
                 if (rpc.RPC_Subscribe(callbacks + 0U, callbacks + MAX_RPC_SUBSCRIPTIONS))

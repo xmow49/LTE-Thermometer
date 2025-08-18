@@ -1,6 +1,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "freertos/event_groups.h"
 #include "ping/ping_sock.h"
 #include "esp_log.h"
 #include "device.hpp"
@@ -8,9 +9,12 @@
 #include "config.h"
 
 #define TAG "ping"
+#define PING_END_BIT BIT0
 
 static esp_ping_handle_t ping;
 static int ping_value = -1;
+static EventGroupHandle_t ping_event_group;
+
 static void ping_task(void *pvParameters);
 
 static void on_ping_success(esp_ping_handle_t hdl, void *args)
@@ -26,6 +30,7 @@ static void on_ping_success(esp_ping_handle_t hdl, void *args)
     esp_ping_get_profile(hdl, ESP_PING_PROF_TIMEGAP, &elapsed_time, sizeof(elapsed_time));
     ESP_LOGI(TAG, "%" PRIu32 " bytes from %s icmp_seq=%u ttl=%u time=%" PRIu32 " ms\n", recv_len, ipaddr_ntoa(&target_addr), seqno, ttl, elapsed_time);
     ping_value = elapsed_time;
+    xEventGroupSetBits(ping_event_group, PING_END_BIT);
     device_report_telemetry(DEVICE_GATEWAY_MAC, "ping", ping_value);
 }
 
@@ -37,11 +42,19 @@ static void on_ping_timeout(esp_ping_handle_t hdl, void *args)
     esp_ping_get_profile(hdl, ESP_PING_PROF_IPADDR, &target_addr, sizeof(target_addr));
     ESP_LOGW(TAG, "From %s icmp_seq=%u timeout\n", ipaddr_ntoa(&target_addr), seqno);
     ping_value = -1;
+    xEventGroupSetBits(ping_event_group, PING_END_BIT);
     device_report_telemetry(DEVICE_GATEWAY_MAC, "ping", ping_value);
 }
 
 void ping_init()
 {
+    ping_event_group = xEventGroupCreate();
+    if (ping_event_group == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create ping event group");
+        return;
+    }
+
     ip_addr_t target_addr;
     memset(&target_addr, 0, sizeof(target_addr));
     char *ping_addr_s = NULL;
@@ -69,14 +82,42 @@ void ping_init()
 void ping_task(void *pvParameters)
 {
 
+    uint32_t tries = 0;
     while (1)
     {
-        if (!main_network_connected())
+        if (!main_network_attached())
         {
+            ESP_LOGW(TAG, "Network not attached, waiting for connection");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
+
+        xEventGroupClearBits(ping_event_group, PING_END_BIT);
+        ESP_LOGI(TAG, "Starting ping");
         esp_ping_start(ping);
+        tries++;
+        xEventGroupWaitBits(ping_event_group, PING_END_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+        // Process ping result
+        if (ping_value != -1)
+        {
+            ESP_LOGI(TAG, "Ping successful: %d ms", ping_value);
+            tries = 0;
+        }
+        else
+        {
+            ESP_LOGW(TAG, "Ping failed");
+            if (tries >= 3)
+            {
+                ESP_LOGE(TAG, "Ping failed 3 times in a row, retrying in a minute");
+                vTaskDelay(pdMS_TO_TICKS(60 * 1000));
+            }
+            else
+            {
+                vTaskDelay(pdMS_TO_TICKS(3000));
+            }
+            continue;
+        }
+
         vTaskDelay(pdMS_TO_TICKS(config.interval_ping * 1000));
     }
 }
