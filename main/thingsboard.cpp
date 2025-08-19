@@ -642,7 +642,7 @@ bool sendTelemetryJson(const char *topic, char *json)
 
 extern "C" void tb_init()
 {
-    xTaskCreate(tb_task, "tb_task", 12 * 1024, NULL, 5, NULL);
+    xTaskCreate(tb_task, "tb_task", 16 * 1024, NULL, 5, NULL);
 }
 
 extern "C" void tb_force_update()

@@ -326,19 +326,43 @@ void ensure_telemetry_dir(void)
     }
 }
 
-// Fonction pour sauvegarder une seule mesure de télémétrie
-esp_err_t sd_save_telemetry(const char *name, float value)
+// Fonction pour créer le dossier telemetry/device s'il n'existe pas
+void ensure_device_telemetry_dir(const char *device_name)
 {
-    if (!name)
+    // D'abord s'assurer que le dossier telemetry existe
+    ensure_telemetry_dir();
+
+    char device_dir[512];
+    snprintf(device_dir, sizeof(device_dir), "%s/%s", TELEMETRY_DIR, device_name);
+
+    struct stat st;
+    memset(&st, 0, sizeof(st));
+    if (stat(device_dir, &st) == -1)
     {
-        ESP_LOGE(TAG, "Invalid name parameter");
+        if (mkdir(device_dir, 0700) != 0)
+        {
+            ESP_LOGE(TAG, "Failed to create device telemetry directory: %s", device_dir);
+        }
+        else
+        {
+            ESP_LOGI(TAG, "Created device telemetry directory: %s", device_dir);
+        }
+    }
+}
+
+// Fonction pour sauvegarder une seule mesure de télémétrie
+esp_err_t sd_save_telemetry(const char *device_name, const char *name, float value)
+{
+    if (!device_name || !name)
+    {
+        ESP_LOGE(TAG, "Invalid device_name or name parameter");
         return ESP_ERR_INVALID_ARG;
     }
 
-    ensure_telemetry_dir();
+    ensure_device_telemetry_dir(device_name);
 
-    char filepath[256];
-    snprintf(filepath, sizeof(filepath), "%s/%s.csv", TELEMETRY_DIR, name);
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s/%s.csv", TELEMETRY_DIR, device_name, name);
 
     FILE *f = fopen(filepath, "a"); // Mode append
     if (f == NULL)
@@ -364,20 +388,27 @@ esp_err_t sd_save_telemetry(const char *name, float value)
     fflush(f);        // Forcer l'écriture du buffer
     fsync(fileno(f)); // Synchroniser avec le disque
     fclose(f);
-    ESP_LOGI(TAG, "Saved telemetry: %s = %.2f (ts: %lld)", name, value, (long long)now);
+    ESP_LOGI(TAG, "Saved telemetry: %s/%s = %.2f (ts: %lld)", device_name, name, value, (long long)now);
     return ESP_OK;
 }
 
 // Fonction pour sauvegarder un vecteur de TelemetryReport
-esp_err_t sd_save_telemetrys(const std::vector<TelemetryReport> &telemetry_reports)
+esp_err_t sd_save_telemetrys(Device *device, const std::vector<TelemetryReport> &telemetry_reports)
 {
+    if (!device)
+    {
+        ESP_LOGE(TAG, "Invalid device parameter");
+        return ESP_ERR_INVALID_ARG;
+    }
+
     if (telemetry_reports.empty())
     {
         ESP_LOGW(TAG, "No telemetry data to save");
         return ESP_OK;
     }
 
-    ensure_telemetry_dir();
+    const std::string &device_name = device->getName();
+    ensure_device_telemetry_dir(device_name.c_str());
 
     // Grouper les données par nom pour optimiser l'écriture
     std::map<std::string, std::vector<const TelemetryReport *>> grouped_data;
@@ -393,8 +424,8 @@ esp_err_t sd_save_telemetrys(const std::vector<TelemetryReport> &telemetry_repor
         const std::string &name = pair.first;
         const std::vector<const TelemetryReport *> &reports = pair.second;
 
-        char filepath[256];
-        snprintf(filepath, sizeof(filepath), "%s/%s.csv", TELEMETRY_DIR, name.c_str());
+        char filepath[512];
+        snprintf(filepath, sizeof(filepath), "%s/%s/%s.csv", TELEMETRY_DIR, device_name.c_str(), name.c_str());
 
         FILE *f = fopen(filepath, "a"); // Mode append
         if (f == NULL)
@@ -422,25 +453,25 @@ esp_err_t sd_save_telemetrys(const std::vector<TelemetryReport> &telemetry_repor
         fflush(f);        // Forcer l'écriture du buffer
         fsync(fileno(f)); // Synchroniser avec le disque
         fclose(f);
-        ESP_LOGI(TAG, "Saved %d telemetry entries for %s", reports.size(), name.c_str());
+        ESP_LOGI(TAG, "Saved %d telemetry entries for %s/%s", reports.size(), device_name.c_str(), name.c_str());
     }
 
     return ESP_OK;
 }
 
 // Fonction pour lire les données de télémétrie et les convertir en vecteur
-std::vector<TelemetryReport> sd_read_telemetry(const char *name, bool clear_after_read)
+std::vector<TelemetryReport> sd_read_telemetry(const char *device_name, const char *name, bool clear_after_read)
 {
     std::vector<TelemetryReport> telemetry_list;
 
-    if (!name)
+    if (!device_name || !name)
     {
-        ESP_LOGE(TAG, "Invalid name parameter");
+        ESP_LOGE(TAG, "Invalid device_name or name parameter");
         return telemetry_list;
     }
 
-    char filepath[256];
-    snprintf(filepath, sizeof(filepath), "%s/%s.csv", TELEMETRY_DIR, name);
+    char filepath[512];
+    snprintf(filepath, sizeof(filepath), "%s/%s/%s.csv", TELEMETRY_DIR, device_name, name);
 
     FILE *f = fopen(filepath, "r");
     if (f == NULL)
@@ -503,21 +534,30 @@ std::vector<TelemetryReport> sd_read_telemetry(const char *name, bool clear_afte
     }
     else
     {
-        ESP_LOGI(TAG, "Read %d telemetry entries from %s", count, filepath);
+        ESP_LOGI(TAG, "Read %d telemetry entries from %s/%s", count, device_name, name);
     }
 
     return telemetry_list;
 }
 
-// Fonction pour lire toutes les données de télémétrie d'un dossier
-std::vector<TelemetryReport> sd_read_all_telemetry(bool clear_after_read)
+// Fonction pour lire toutes les données de télémétrie d'un device
+std::vector<TelemetryReport> sd_read_device_telemetry(const char *device_name, bool clear_after_read)
 {
     std::vector<TelemetryReport> all_telemetry;
 
-    DIR *dir = opendir(TELEMETRY_DIR);
+    if (!device_name)
+    {
+        ESP_LOGE(TAG, "Invalid device_name parameter");
+        return all_telemetry;
+    }
+
+    char device_dir[512];
+    snprintf(device_dir, sizeof(device_dir), "%s/%s", TELEMETRY_DIR, device_name);
+
+    DIR *dir = opendir(device_dir);
     if (dir == NULL)
     {
-        ESP_LOGW(TAG, "Telemetry directory does not exist");
+        ESP_LOGW(TAG, "Device telemetry directory does not exist: %s", device_dir);
         return all_telemetry;
     }
 
@@ -533,7 +573,7 @@ std::vector<TelemetryReport> sd_read_all_telemetry(bool clear_after_read)
             name = name.substr(0, name.find_last_of("."));
 
             // Lire les données de ce fichier
-            auto telemetry_data = sd_read_telemetry(name.c_str(), clear_after_read);
+            auto telemetry_data = sd_read_telemetry(device_name, name.c_str(), clear_after_read);
 
             // Ajouter à la liste principale
             all_telemetry.insert(all_telemetry.end(), telemetry_data.begin(), telemetry_data.end());
@@ -541,7 +581,38 @@ std::vector<TelemetryReport> sd_read_all_telemetry(bool clear_after_read)
     }
 
     closedir(dir);
-    ESP_LOGI(TAG, "Read total of %d telemetry entries from all files", all_telemetry.size());
+    ESP_LOGI(TAG, "Read total of %d telemetry entries from device %s", all_telemetry.size(), device_name);
+    return all_telemetry;
+}
+
+// Fonction pour lire toutes les données de télémétrie de tous les devices
+std::vector<TelemetryReport> sd_read_all_telemetry(bool clear_after_read)
+{
+    std::vector<TelemetryReport> all_telemetry;
+
+    DIR *dir = opendir(TELEMETRY_DIR);
+    if (dir == NULL)
+    {
+        ESP_LOGW(TAG, "Telemetry directory does not exist");
+        return all_telemetry;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL)
+    {
+        // Vérifier que c'est un dossier (device)
+        if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+        {
+            // Lire toutes les données de ce device
+            auto device_telemetry = sd_read_device_telemetry(entry->d_name, clear_after_read);
+
+            // Ajouter à la liste principale
+            all_telemetry.insert(all_telemetry.end(), device_telemetry.begin(), device_telemetry.end());
+        }
+    }
+
+    closedir(dir);
+    ESP_LOGI(TAG, "Read total of %d telemetry entries from all devices", all_telemetry.size());
     return all_telemetry;
 }
 
@@ -551,9 +622,10 @@ void sd_test_telemetry_functions(void)
     ESP_LOGI(TAG, "Testing telemetry functions...");
 
     // Test 1: Sauvegarder des données individuelles
-    sd_save_telemetry("temperature", 23.5);
-    sd_save_telemetry("humidity", 65.2);
-    sd_save_telemetry("temperature", 24.1);
+    sd_save_telemetry("device1", "temperature", 23.5);
+    sd_save_telemetry("device1", "humidity", 65.2);
+    sd_save_telemetry("device1", "temperature", 24.1);
+    sd_save_telemetry("device2", "temperature", 22.8);
 
     // Test 2: Créer un vecteur de TelemetryReport et le sauvegarder
     std::vector<TelemetryReport> test_data;
@@ -561,14 +633,18 @@ void sd_test_telemetry_functions(void)
     test_data.emplace_back("pressure", 1012.8);
     test_data.emplace_back("voltage", 3.7);
 
-    sd_save_telemetrys(test_data);
+    // Pour tester sd_save_telemetrys, nous aurions besoin d'un objet Device valide
+    // sd_save_telemetrys(device_ptr, test_data);
 
     // Test 3: Lire les données
-    auto temp_data = sd_read_telemetry("temperature", false);
-    ESP_LOGI(TAG, "Read %d temperature entries", temp_data.size());
+    auto temp_data = sd_read_telemetry("device1", "temperature", false);
+    ESP_LOGI(TAG, "Read %d temperature entries for device1", temp_data.size());
+
+    auto device1_data = sd_read_device_telemetry("device1", false);
+    ESP_LOGI(TAG, "Read %d entries from device1", device1_data.size());
 
     auto all_data = sd_read_all_telemetry(false);
-    ESP_LOGI(TAG, "Read total %d entries from all files", all_data.size());
+    ESP_LOGI(TAG, "Read total %d entries from all devices", all_data.size());
 
     ESP_LOGI(TAG, "Telemetry functions test completed");
 }
@@ -586,26 +662,47 @@ void sd_list_telemetry_files(void)
     }
 
     struct dirent *entry;
-    int file_count = 0;
+    int device_count = 0;
     while ((entry = readdir(dir)) != NULL)
     {
-        if (entry->d_type == DT_REG) // Regular file
+        if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
         {
-            char filepath[512];
-            snprintf(filepath, sizeof(filepath), "%s/%s", TELEMETRY_DIR, entry->d_name);
+            ESP_LOGI(TAG, "Device: %s", entry->d_name);
+            device_count++;
 
-            FILE *f = fopen(filepath, "r");
-            if (f != NULL)
+            // Lister les fichiers dans le dossier du device
+            char device_dir[512];
+            snprintf(device_dir, sizeof(device_dir), "%s/%s", TELEMETRY_DIR, entry->d_name);
+
+            DIR *device_dir_ptr = opendir(device_dir);
+            if (device_dir_ptr != NULL)
             {
-                fseek(f, 0, SEEK_END);
-                long file_size = ftell(f);
-                fclose(f);
-                ESP_LOGI(TAG, "File: %s (size: %ld bytes)", entry->d_name, file_size);
-                file_count++;
+                struct dirent *file_entry;
+                int file_count = 0;
+                while ((file_entry = readdir(device_dir_ptr)) != NULL)
+                {
+                    if (file_entry->d_type == DT_REG) // Regular file
+                    {
+                        char filepath[768]; // Increased size to handle device_dir + "/" + filename
+                        snprintf(filepath, sizeof(filepath), "%s/%s", device_dir, file_entry->d_name);
+
+                        FILE *f = fopen(filepath, "r");
+                        if (f != NULL)
+                        {
+                            fseek(f, 0, SEEK_END);
+                            long file_size = ftell(f);
+                            fclose(f);
+                            ESP_LOGI(TAG, "  File: %s (size: %ld bytes)", file_entry->d_name, file_size);
+                            file_count++;
+                        }
+                    }
+                }
+                closedir(device_dir_ptr);
+                ESP_LOGI(TAG, "  Total files: %d", file_count);
             }
         }
     }
 
     closedir(dir);
-    ESP_LOGI(TAG, "Found %d files in telemetry directory", file_count);
+    ESP_LOGI(TAG, "Found %d devices in telemetry directory", device_count);
 }

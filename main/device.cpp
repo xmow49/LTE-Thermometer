@@ -149,7 +149,7 @@ void Device::addTelemetry(TelemetryReport telemetry)
     if (
         xTaskGetTickCount() - last_telemetry_saved > pdMS_TO_TICKS(config.time_save_telemetry * 1000))
     {
-        sd_save_telemetrys(telemetry_list);
+        sd_save_telemetrys(this, telemetry_list);
         sd_list_telemetry_files();
         last_telemetry_saved = xTaskGetTickCount();
         telemetry_list.clear();
@@ -267,7 +267,7 @@ std::string Device::computeTelemetryJson()
     telemetry_list_json = std::move(telemetry_list);
 
     // Lire les données sauvegardées sur SD et les ajouter
-    auto sd_telemetry = sd_read_all_telemetry(true);
+    auto sd_telemetry = sd_read_device_telemetry(this->getName().c_str(), true);
     telemetry_list_json.insert(telemetry_list_json.end(), sd_telemetry.begin(), sd_telemetry.end());
 
     telemetry_list.clear(); // Optionnel car telemetry_list est déjà vide après std::move
@@ -329,7 +329,7 @@ void Device::moveBackTelemetry()
     telemetry_list = std::move(telemetry_list_json);
     telemetry_list_json.clear();
 
-    if (sd_save_telemetrys(telemetry_list) != ESP_OK)
+    if (sd_save_telemetrys(this, telemetry_list) != ESP_OK)
     {
         ESP_LOGE(TAG, "Failed to save telemetry to SD");
     }
