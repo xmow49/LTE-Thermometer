@@ -504,6 +504,8 @@ extern "C" void tb_task(void *pvParameters)
                 }
             }
 
+            last_update = xTaskGetTickCount();
+
             if (!fw_info_sent)
             {
                 ESP_LOGI(TAG, "Sending firmware info to TB");
@@ -603,12 +605,6 @@ extern "C" void tb_task(void *pvParameters)
                 }
             }
 
-            // clear flag if at least one device has sent telemetry and more than 10 seconds have passed
-            if (device_with_telemetry_sent > 0 && (xTaskGetTickCount() - last_update > pdMS_TO_TICKS(10000)))
-            {
-                // wait for the telemetry to be sent before setting first_cycle to false
-                last_update = xTaskGetTickCount();
-            }
             force_update = false;
         }
         vTaskDelay(1000 / portTICK_PERIOD_MS);
