@@ -76,7 +76,7 @@ void ping_init()
         .cb_args = NULL,
     };
     esp_ping_new_session(&ping_config, &cbs, &ping);
-    xTaskCreate(ping_task, "ping_task", 4096, NULL, 5, NULL);
+    xTaskCreate(ping_task, "ping_task", 8 * 1024, NULL, 5, NULL);
 }
 
 void ping_task(void *pvParameters)

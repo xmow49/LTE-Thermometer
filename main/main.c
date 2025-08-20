@@ -250,8 +250,24 @@ void app_main(void)
     if (button_get_state())
     {
         ESP_LOGI(TAG, "Button pressed on startup, stop boot here");
+        config.lcd_notify = true;
         lcd_setup_msg("DEBUG MODE", "Please restart");
-        vTaskDelay(pdMS_TO_TICKS(600 * 1000));
+        while (button_get_state())
+        {
+            vTaskDelay(pdMS_TO_TICKS(100));
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        TickType_t start_time = xTaskGetTickCount();
+        while (xTaskGetTickCount() - start_time < pdMS_TO_TICKS(600 * 1000))
+        {
+            if (button_get_state())
+            {
+                ESP_LOGI(TAG, "Button pressed again, rebooting...");
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1000));
+        }
+        ESP_LOGI(TAG, "Rebooting...");
         esp_restart();
     }
 
@@ -319,6 +335,7 @@ void app_main(void)
     modem_update_telemetry();
 
     xTaskCreate(sensors_task, "sensors_task", 4 * 1024, NULL, 5, NULL);
+    device_start_telemetry_save_task(); // Start telemetry save task
     button_start();
     battery_init();
 

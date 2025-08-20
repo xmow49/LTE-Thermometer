@@ -8,6 +8,8 @@
 #include "thingsboard.hpp"
 #include "config.h"
 #include "sd.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define TAG "DEVICE"
 DeviceList deviceList;
@@ -145,15 +147,6 @@ void Device::addTelemetry(TelemetryReport telemetry)
     }
 
     telemetry_list.emplace_back(telemetry);
-
-    if (
-        xTaskGetTickCount() - last_telemetry_saved > pdMS_TO_TICKS(config.time_save_telemetry * 1000))
-    {
-        sd_save_telemetrys(this, telemetry_list);
-        sd_list_telemetry_files();
-        last_telemetry_saved = xTaskGetTickCount();
-        telemetry_list.clear();
-    }
 
     xSemaphoreGive(telemetry_mutex);
 }
@@ -339,4 +332,67 @@ void Device::moveBackTelemetry()
     }
 
     xSemaphoreGive(telemetry_mutex);
+}
+
+bool Device::saveTelemetryToSD()
+{
+    if (xSemaphoreTake(telemetry_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
+    {
+        ESP_LOGE(TAG, "Failed to take telemetry mutex for device %s", getName().c_str());
+        return false;
+    }
+
+    bool result = false;
+    if (!telemetry_list.empty())
+    {
+        ESP_LOGI(TAG, "Saving %d telemetry entries for device %s",
+                 telemetry_list.size(), getName().c_str());
+
+        if (sd_save_telemetrys(this, telemetry_list) == ESP_OK)
+        {
+            telemetry_list.clear();
+            last_telemetry_saved = xTaskGetTickCount();
+            ESP_LOGI(TAG, "Telemetry saved successfully for device %s", getName().c_str());
+            result = true;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "Failed to save telemetry for device %s", getName().c_str());
+        }
+    }
+
+    xSemaphoreGive(telemetry_mutex);
+    return result;
+}
+
+static void telemetry_save_task(void *pvParameters)
+{
+    TickType_t last_wake_time = xTaskGetTickCount();
+
+    while (1)
+    {
+        // Wait for the configured interval
+        vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(config.time_save_telemetry * 1000));
+
+        ESP_LOGI(TAG, "Telemetry save task running...");
+
+        // Iterate through all devices and save their telemetry
+        for (Device *device : deviceList.get_all())
+        {
+            if (device == nullptr)
+                continue;
+
+            // Use the public method to save telemetry
+            device->saveTelemetryToSD();
+        }
+
+        // List telemetry files after saving
+        sd_list_telemetry_files();
+    }
+}
+
+extern "C" void device_start_telemetry_save_task(void)
+{
+    xTaskCreate(telemetry_save_task, "telemetry_save", 4 * 1024, NULL, 3, NULL);
+    ESP_LOGI(TAG, "Telemetry save task started");
 }

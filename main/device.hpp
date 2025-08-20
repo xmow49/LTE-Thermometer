@@ -46,6 +46,7 @@ public:
     std::string computeTelemetryJson();
     void clearTelemetryJson();
     void moveBackTelemetry();
+    bool saveTelemetryToSD(); // New method for saving telemetry
 
 private:
     std::string name;
@@ -82,6 +83,7 @@ extern "C"
     void device_receive(char *mac, telemetry_message data);
     void device_report_telemetry(char *mac, char *key, float value);
     bool device_gateway_send_json_telemetry(char *json);
+    void device_start_telemetry_save_task(void); // New function to start telemetry save task
 
 #ifdef __cplusplus
 }
