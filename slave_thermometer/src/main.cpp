@@ -2,7 +2,14 @@
 
 void setup()
 {
+#if DEBUG
+	Serial.begin(115200);
+	Serial.setTimeout(2000);
+	delay(1000);
+#endif
+
 	getConfig();
+	config_t read_config = config;
 	setupEspNow();
 	sendTemp();
 
@@ -13,10 +20,19 @@ void setup()
 	}
 	if (config_received)
 	{
+		DBG_PRINTLN("old config: " + String(read_config.interval_s));
+		if (memcmp(&read_config, &config, sizeof(config)) == 0)
+		{
+			DBG_PRINTLN("Config received but unchanged: sleep");
+			sleep();
+		}
 		DBG_PRINTLN("NEW interval: " + String(config.interval_s));
+		EEPROM.begin(EEPROM_SIZE);
 		EEPROM.put(0, config);
 		EEPROM.commit();
+		EEPROM.end();
 		DBG_PRINTLN("Config saved");
+		delay(1000);
 		sleep();
 	}
 	else
