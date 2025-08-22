@@ -406,7 +406,8 @@ extern "C" void tb_task(void *pvParameters)
         lcd_setup_msg("Erreur SD", "Erreur Devices");
     }
 
-    mqttClient.set_keep_alive_timeout(300); // 30 minutes
+    uint32_t keepalive = config.keepalive_interval;
+    mqttClient.set_keep_alive_timeout(keepalive);
     TickType_t last_update = xTaskGetTickCount();
 
     while (1)
@@ -415,6 +416,13 @@ extern "C" void tb_task(void *pvParameters)
         {
             vTaskDelay(2000 / portTICK_PERIOD_MS);
             continue;
+        }
+
+        if (keepalive != config.keepalive_interval)
+        {
+            ESP_LOGI(TAG, "Updating MQTT keepalive from %d to %d seconds", keepalive, config.keepalive_interval);
+            keepalive = config.keepalive_interval;
+            mqttClient.set_keep_alive_timeout(keepalive);
         }
 
         if (!tb.connected() && !connecting)
