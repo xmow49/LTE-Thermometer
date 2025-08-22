@@ -3,12 +3,22 @@
 
 #define DEVICE_GATEWAY_MAC "00:00:00:00:00:00"
 
+#include <stdint.h>
 typedef struct telemetry_message
 {
     float temperature;
     float humidity;
-    int battery;
+    uint8_t battery_percentage;
+    uint16_t battery_voltage_mv;
 } telemetry_message;
+
+#define MAGIC_NUMBER 0xDBE49EB0
+
+typedef struct config_message_t
+{
+    uint32_t magic_number;
+    uint32_t interval_s;
+} config_message_t;
 
 #ifdef __cplusplus
 
@@ -64,7 +74,9 @@ class DeviceList
 {
 public:
     void add(Device *device);
-    Device *find_by_mac(const char *mac);
+    Device *find_by_str_mac(const char *mac);
+    Device *find_by_mac(const uint8_t *mac);
+
     std::vector<Device *> &get_all();
     Device *get_gateway();
 

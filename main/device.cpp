@@ -10,6 +10,7 @@
 #include "sd.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include <cmath>
 
 #define TAG "DEVICE"
 DeviceList deviceList;
@@ -106,7 +107,7 @@ void DeviceList::add(Device *device)
     devices.emplace_back(device);
 }
 
-Device *DeviceList::find_by_mac(const char *mac)
+Device *DeviceList::find_by_str_mac(const char *mac)
 {
     // Convert MAC to uint8_t array
     uint8_t mac_array[6];
@@ -121,6 +122,23 @@ Device *DeviceList::find_by_mac(const char *mac)
     }
     return nullptr;
 }
+
+Device *DeviceList::find_by_mac(const uint8_t *mac)
+{
+    // Convert MAC to uint8_t array
+    uint8_t mac_array[6];
+    memcpy(mac_array, mac, 6);
+
+    for (const auto &device : devices)
+    {
+        if (memcmp(device->getMac(), mac_array, 6) == 0)
+        {
+            return device;
+        }
+    }
+    return nullptr;
+}
+
 std::vector<Device *> &DeviceList::get_all()
 {
     return devices;
@@ -158,25 +176,37 @@ extern "C" void device_add(char *name, char *mac)
 
 extern "C" void device_receive(char *mac, telemetry_message data)
 {
-    // Device *device = deviceList.find_by_mac(mac);
-    Device *device = deviceList.find_by_mac("00:00:00:00:00:01"); // temp fix for use the old device TODO: remove
+    ESP_LOGI(TAG, "Received data from: %s", mac);
+    Device *device = deviceList.find_by_str_mac(mac);
     if (device)
     {
-        ESP_LOGI(TAG, "Received data from %s: Temp: %f, Hum: %f, Batt: %d", device->getName().c_str(), data.temperature, data.humidity, data.battery);
-        device->addTelemetry(TelemetryReport("t", data.temperature));
-        device->addTelemetry(TelemetryReport("h", data.humidity));
-        device->addTelemetry(TelemetryReport("b", data.battery));
+        ESP_LOGI(TAG, "Received data from %s: Temp: %f, Hum: %f, Batt: %d%% %d", device->getName().c_str(), data.temperature, data.humidity, data.battery_percentage, data.battery_voltage_mv);
+
+        if (!std::isnan(data.temperature))
+        {
+            device->addTelemetry(TelemetryReport("t", data.temperature));
+        }
+
+        if (!std::isnan(data.humidity))
+        {
+            device->addTelemetry(TelemetryReport("h", data.humidity));
+        }
+
+        device->addTelemetry(TelemetryReport("b", data.battery_percentage));
+
+        device->addTelemetry(TelemetryReport("b_v", data.battery_voltage_mv / 1000.0f)); // Convert mV to V
+        device->addTelemetry(TelemetryReport("b_p", data.battery_percentage));
     }
     else
     {
         ESP_LOGE(TAG, "Received data from unknown device %s", mac);
-        ESP_LOGE(TAG, "Data: Temp: %f, Hum: %f, Batt: %d", data.temperature, data.humidity, data.battery);
+        ESP_LOGE(TAG, "Data: Temp: %f, Hum: %f, Batt: %d%% %d", data.temperature, data.humidity, data.battery_percentage, data.battery_voltage_mv);
     }
 }
 
 extern "C" bool device_gateway_send_json_telemetry(char *json)
 {
-    Device *device = deviceList.find_by_mac(DEVICE_GATEWAY_MAC);
+    Device *device = deviceList.find_by_str_mac(DEVICE_GATEWAY_MAC);
     if (device)
     {
         return device->sendJsonTelemetry(json);
@@ -199,12 +229,12 @@ DeviceList &get_devices_list()
 
 Device *DeviceList::get_gateway()
 {
-    return find_by_mac(DEVICE_GATEWAY_MAC);
+    return find_by_str_mac(DEVICE_GATEWAY_MAC);
 }
 
 extern "C" void device_report_telemetry(char *mac, char *key, float value)
 {
-    Device *device = deviceList.find_by_mac(mac);
+    Device *device = deviceList.find_by_str_mac(mac);
     if (device)
     {
         // device->sendTelemetry(key, value);

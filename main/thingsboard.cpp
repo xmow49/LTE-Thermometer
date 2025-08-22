@@ -19,6 +19,7 @@
 #include "config.h"
 #include "sensors.hpp"
 #include "modem.h"
+#include "espnow.h"
 #include "battery.h"
 #include "logs.h"
 
@@ -40,7 +41,7 @@
 #define MAX_CONNECT_TRIES (3)
 #define RECONNECT_DELAY_AFTER_FAILURE_S (60 * 60) // seconds
 
-#define REQUEST_TIMEOUT_MICROSECONDS (1000 * 1000)
+#define REQUEST_TIMEOUT_MICROSECONDS (1000ULL * 1000ULL)
 
 bool force_update = false;
 Espressif_MQTT_Client mqttClient;
@@ -381,6 +382,23 @@ extern "C" void tb_task(void *pvParameters)
     if (ret == ESP_OK)
     {
         device_list();
+
+        DeviceList devices = get_devices_list();
+        std::vector<Device *> &device_list = devices.get_all();
+
+        for (int i = 0; i < device_list.size(); i++)
+        {
+            Device *device = device_list[i];
+            if (!device || device->getMacString() == DEVICE_GATEWAY_MAC)
+            {
+                continue;
+            }
+            ret = espnow_register_device(device->getMac());
+            if (ret != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to register device: %s", device->getMacString().c_str());
+            }
+        }
     }
     else
     {

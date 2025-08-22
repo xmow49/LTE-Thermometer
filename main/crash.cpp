@@ -29,12 +29,12 @@ extern "C" void crash_check_dump()
         break;
 
     case ESP_ERR_INVALID_SIZE:
-        ESP_LOGI(TAG, "Coredump corrupted: invalid size");
+        ESP_LOGI(TAG, "Coredump: empty");
         esp_core_dump_image_erase(); // Nettoyer le coredump corrompu
         break;
 
     case ESP_ERR_INVALID_CRC:
-        ESP_LOGI(TAG, "Coredump corrupted: invalid checksum");
+        ESP_LOGI(TAG, "Coredump: invalid checksum");
         esp_core_dump_image_erase(); // Nettoyer le coredump corrompu
         break;
 

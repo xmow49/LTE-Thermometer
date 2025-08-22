@@ -317,6 +317,10 @@ esp_err_t get_gnss_data(gnss_data_t *data)
         return ret;
     }
 
+    char *tmp = "+CGNSSINFO: 3,11,,00,00,47.5451518,N,0.6673347,W,180825,202259.00,130.8,1.034,,3.23,2.25,2.31,06";
+
+    strcpy(response, tmp); // For testing purposes, replace with actual response
+
     // Parser les données de façon robuste, même si certains champs sont vides
     char *line_start = strstr(response, "+CGNSSINFO:");
     if (line_start)

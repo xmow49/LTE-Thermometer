@@ -8,6 +8,7 @@
 #include "esp_now.h"
 #include "espnow.h"
 #include "device.hpp"
+#include "config.h"
 #include "esp_mac.h"
 #include "esp_wifi.h"
 
@@ -33,12 +34,15 @@ typedef union
 {
     espnow_event_send_cb_t send_cb;
     espnow_event_recv_cb_t recv_cb;
+    uint8_t mac[ESP_NOW_ETH_ALEN];
+
 } espnow_event_info_t;
 
 typedef enum
 {
     ESPNOW_SEND_CB,
     ESPNOW_RECV_CB,
+    ESPNOW_REGISTER,
 } espnow_event_id_t;
 
 typedef struct
@@ -109,9 +113,40 @@ void espnow_task(void *pvParameter)
                          evt.info.recv_cb.mac_addr[0], evt.info.recv_cb.mac_addr[1], evt.info.recv_cb.mac_addr[2],
                          evt.info.recv_cb.mac_addr[3], evt.info.recv_cb.mac_addr[4], evt.info.recv_cb.mac_addr[5]);
                 device_receive(mac_str, data);
+
+                // send config
+                config_message_t config_data = {
+                    .magic_number = MAGIC_NUMBER,
+                    .interval_s = config.sensor_interval_force_update,
+                };
+                esp_err_t err = esp_now_send(evt.info.recv_cb.mac_addr, (uint8_t *)&config_data, sizeof(config_data));
+                if (err != ESP_OK)
+                {
+                    ESP_LOGE(TAG, "Failed to send config data: %s", esp_err_to_name(err));
+                }
             }
+
             free(evt.info.recv_cb.data);
             break;
+        case ESPNOW_REGISTER:
+        {
+            ESP_LOGI(TAG, "Device registered: " MACSTR, MAC2STR(evt.info.mac));
+            esp_now_peer_info_t peer;
+            memset(&peer, 0, sizeof(esp_now_peer_info_t));
+            peer.channel = 0;
+            peer.ifidx = ESP_IF_WIFI_STA;
+            peer.encrypt = false;
+            memcpy(peer.peer_addr, evt.info.mac, ESP_NOW_ETH_ALEN);
+
+            esp_err_t ret = esp_now_add_peer(&peer);
+            if (ret != ESP_OK)
+            {
+                ESP_LOGE(TAG, "Failed to add peer: %s", esp_err_to_name(ret));
+                break;
+            }
+        }
+
+        break;
         default:
             ESP_LOGE(TAG, "Callback type error: %d", evt.id);
             break;
@@ -162,5 +197,24 @@ esp_err_t espnow_init(void)
 
     xTaskCreate(espnow_task, "espnow_task", 4 * 1024, NULL, 4, NULL);
 
+    return ESP_OK;
+}
+
+esp_err_t espnow_register_device(const uint8_t *mac_addr)
+{
+    if (mac_addr == NULL)
+    {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    ESP_LOGI(TAG, "Registering device with MAC: " MACSTR, MAC2STR(mac_addr));
+
+    espnow_event_t evt;
+    evt.id = ESPNOW_REGISTER;
+    memcpy(evt.info.mac, mac_addr, ESP_NOW_ETH_ALEN);
+    if (xQueueSend(s_espnow_queue, &evt, portMAX_DELAY) != pdTRUE)
+    {
+        ESP_LOGW(TAG, "Send send queue fail");
+    }
     return ESP_OK;
 }

@@ -127,7 +127,7 @@ esp_err_t sensors_read_dht22(dht_data_t *data)
 }
 
 DeviceList &devices = get_devices_list();
-Device *device = devices.find_by_mac(DEVICE_GATEWAY_MAC);
+Device *device = devices.find_by_str_mac(DEVICE_GATEWAY_MAC);
 
 void sensors_task(void *pvParameters)
 {
@@ -167,7 +167,7 @@ void sensors_task(void *pvParameters)
 
         if (device == nullptr)
         {
-            device = devices.find_by_mac(DEVICE_GATEWAY_MAC);
+            device = devices.find_by_str_mac(DEVICE_GATEWAY_MAC);
             if (device == nullptr)
             {
                 ESP_LOGW(TAG, "Device with gateway (me) not found.");

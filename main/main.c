@@ -349,8 +349,6 @@ void app_main(void)
     // send_sms("+33000000000", "Hello.");
     while (1)
     {
-        // print free heap
-        // ESP_LOGI(TAG, "Free heap: %ld, minimum free heap: %ld", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
         main_report_telemetry();
         vTaskDelay(pdMS_TO_TICKS(config.interval_stats * 1000));
     }
