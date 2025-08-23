@@ -83,13 +83,22 @@ void ping_task(void *pvParameters)
 {
 
     uint32_t tries = 0;
+    uint32_t network_lost_time = pdMS_TO_TICKS(xTaskGetTickCount());
     while (1)
     {
         if (!main_network_attached())
         {
             ESP_LOGW(TAG, "Network not attached, waiting for connection");
             vTaskDelay(1000 / portTICK_PERIOD_MS);
+            network_lost_time = pdMS_TO_TICKS(xTaskGetTickCount());
             continue;
+        }
+
+        if (pdMS_TO_TICKS(xTaskGetTickCount()) - network_lost_time > pdMS_TO_TICKS(3600 * 1000))
+        {
+            ESP_LOGI(TAG, "Network lost for more than 1 hour: restarting");
+            vTaskDelay(pdMS_TO_TICKS(1000));
+            esp_restart();
         }
 
         xEventGroupClearBits(ping_event_group, PING_END_BIT);

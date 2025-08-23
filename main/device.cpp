@@ -338,7 +338,7 @@ std::string Device::computeTelemetryJson()
     {
         JsonObject obj = array.createNestedObject();
         char roundedValue[32];
-        
+
         if (strncmp(pair.first.c_str(), "lat", 3) == 0 || strncmp(pair.first.c_str(), "lon", 3) == 0)
         {
             // Round latitude and longitude to 7 decimal places
@@ -349,7 +349,7 @@ std::string Device::computeTelemetryJson()
             // Round the value to 2 decimal places
             snprintf(roundedValue, sizeof(roundedValue), "%.2f", pair.second);
         }
-        
+
         obj[pair.first] = atof(roundedValue);
     }
 

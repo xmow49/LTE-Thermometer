@@ -32,15 +32,24 @@ esp_err_t my_time_update()
     esp_sntp_setservername(1, "time.google.com");
     esp_sntp_setservername(2, "time.windows.com");
     esp_sntp_setservername(3, "time.apple.com");
+    esp_sntp_set_sync_interval(30000); // Set sync interval to 30 seconds
+
     esp_sntp_init();
 
     // Wait for time to be set
     int retry = 0;
-    const int retry_count = 10;
+    const int retry_count = 120;
     while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count)
     {
         ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
+        if (retry % 10 == 0)
+        {
+            ESP_LOGI(TAG, "Fore resend request to NTP server");
+            esp_sntp_stop();
+            esp_sntp_set_sync_interval(30000); // Set sync interval to 30 seconds
+            esp_sntp_init();                   // Reinitialize SNTP to resend request
+        }
     }
 
     if (retry == retry_count)
@@ -48,6 +57,12 @@ esp_err_t my_time_update()
         ESP_LOGE(TAG, "Failed to sync time with NTP server");
         is_time_set = false;
         return ESP_FAIL;
+    }
+
+    if (is_time_set)
+    {
+        esp_sntp_set_sync_interval(3600000); // Set sync interval to 1 hour
+        sntp_restart();
     }
 
     return ESP_OK;

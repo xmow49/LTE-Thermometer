@@ -279,8 +279,7 @@ void processRPCLogs(const JsonVariantConst &data, JsonDocument &response)
 void processRPCGnss(const JsonVariantConst &data, JsonDocument &response)
 {
     ESP_LOGI(TAG, "Received RPC method 'gnss'");
-    gnss_data_t gnss_data;
-    esp_err_t ret = get_gnss_data(&gnss_data);
+    esp_err_t ret = request_gnss_data();
     if (ret == ESP_ERR_INVALID_STATE)
     {
         ESP_LOGE(TAG, "GNSS data not available");
@@ -297,24 +296,6 @@ void processRPCGnss(const JsonVariantConst &data, JsonDocument &response)
     }
 
     response["status"] = "success";
-    // create nested object for GNSS data
-    JsonObject gnssObj = response.createNestedObject("data");
-    gnssObj["mode"] = gnss_data.mode;
-    gnssObj["gps_svs"] = gnss_data.gps_svs;
-    gnssObj["glonass_svs"] = gnss_data.glonass_svs;
-    gnssObj["beidou_svs"] = gnss_data.beidou_svs;
-    gnssObj["latitude"] = gnss_data.latitude;
-    gnssObj["longitude"] = gnss_data.longitude;
-    gnssObj["altitude"] = gnss_data.altitude;
-    gnssObj["speed"] = gnss_data.speed;
-    gnssObj["course"] = gnss_data.course;
-    gnssObj["pdop"] = gnss_data.pdop;
-    gnssObj["hdop"] = gnss_data.hdop;
-    gnssObj["vdop"] = gnss_data.vdop;
-    gnssObj["ns_indicator"] = std::string(1, gnss_data.ns_indicator);
-    gnssObj["ew_indicator"] = std::string(1, gnss_data.ew_indicator);
-    gnssObj["date"] = gnss_data.date;
-    gnssObj["utc_time"] = gnss_data.utc_time;
 }
 
 extern "C" void tb_task(void *pvParameters)

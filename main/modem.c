@@ -16,6 +16,8 @@
 
 static const char *TAG = "MODEM";
 
+bool gnss_initialized = false;
+bool gnss_requested = false;
 #define BUF_SIZE 1024
 #define UART_NUM UART_NUM_1
 #define RX_PIN 17
@@ -255,61 +257,26 @@ esp_err_t modem_update_telemetry()
             ESP_LOGE(TAG, "Failed to get RSSI: %s", esp_err_to_name(ret));
         }
     }
+
+    if (gnss_requested)
+    {
+        ret = request_gnss_data();
+        if (ret == ESP_OK)
+        {
+            ESP_LOGI(TAG, "GNSS data updated");
+        }
+    }
     return ret;
 }
 
-esp_err_t get_gnss_data(gnss_data_t *data)
+esp_err_t ask_gnss_data(gnss_data_t *data)
 {
     char response[BUF_SIZE];
-    static bool gnss_initialized = false;
-    esp_err_t ret;
-
-    if (!main_network_connected())
-    {
-        return ESP_ERR_INVALID_STATE;
-    }
 
     gnss_data_t gnss_data;
-
-    // Initialiser toutes les valeurs à 0
+    // Initialiser les chaînes à zéro pour éviter les caractères corrompus
     memset(&gnss_data, 0, sizeof(gnss_data_t));
-
-    if (!gnss_initialized)
-    {
-        // power on gnss
-        ret = send_at_command_wait_response("AT+CGNSSPWR=1", "+CGNSSPWR: READY!", response, sizeof(response), 16000);
-        if (ret != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to power on GNSS: %s", response);
-            return ret;
-        }
-        ESP_LOGI(TAG, "GNSS powered on");
-
-        ret = send_at_command_wait_response("AT+CGNSSTST=1", "OK", response, sizeof(response), 2000);
-        if (ret != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to start GNSS nmea: %s", response);
-            return ret;
-        }
-        ESP_LOGI(TAG, "GNSS NMEA started");
-
-        ret = send_at_command_wait_response("AT+CGNSSPORTSWITCH=1,0", "OK", response, sizeof(response), 2000);
-        if (ret != ESP_OK)
-        {
-            ESP_LOGE(TAG, "Failed to switch GNSS port: %s", response);
-            return ret;
-        }
-        ESP_LOGI(TAG, "GNSS port switched");
-
-        ret = send_at_command_wait_response("AT+CAGPS", "+AGPS: success.", response, sizeof(response), 16000);
-        if (ret != ESP_OK)
-        {
-            ESP_LOGW(TAG, "Failed to get AGPS: %s", response);
-        }
-        ESP_LOGI(TAG, "GNSS Assisted positioning started");
-        gnss_initialized = true;
-    }
-
+    esp_err_t ret;
     ret = send_at_command_wait_response("AT+CGNSSINFO", "+CGNSSINFO:", response, sizeof(response), 2000);
     if (ret != ESP_OK)
     {
@@ -368,11 +335,17 @@ esp_err_t get_gnss_data(gnss_data_t *data)
                 break;
             case 8:
                 if (strlen(token) > 0)
+                {
                     strncpy(gnss_data.date, token, sizeof(gnss_data.date) - 1);
+                    gnss_data.date[sizeof(gnss_data.date) - 1] = '\0';
+                }
                 break;
             case 9:
                 if (strlen(token) > 0)
+                {
                     strncpy(gnss_data.utc_time, token, sizeof(gnss_data.utc_time) - 1);
+                    gnss_data.utc_time[sizeof(gnss_data.utc_time) - 1] = '\0';
+                }
                 break;
             case 10:
                 if (strlen(token) > 0)
@@ -411,40 +384,132 @@ esp_err_t get_gnss_data(gnss_data_t *data)
     }
 
     ESP_LOGI(TAG, "GNSS Parse result: %d fields parsed", ret);
-    if (ret < 1)
+    if (ret < 3)
     {
         ESP_LOGW(TAG, "No GNSS fields parsed successfully");
         ESP_LOGE(TAG, "Response: %s", response);
         return ESP_ERR_INVALID_STATE;
     }
-    else
+
+    ESP_LOGI(TAG, "Mode: %d, GPS SVs: %d, GLONASS SVs: %d, BEIDOU SVs: %d",
+             gnss_data.mode, gnss_data.gps_svs, gnss_data.glonass_svs, gnss_data.beidou_svs);
+    ESP_LOGI(TAG, "Lat: %.5f%c, Lon: %.5f%c", gnss_data.latitude, gnss_data.ns_indicator, gnss_data.longitude, gnss_data.ew_indicator);
+    ESP_LOGI(TAG, "Date: %s, Time: %s", gnss_data.date, gnss_data.utc_time);
+    ESP_LOGI(TAG, "Alt: %.2f, Speed: %.2f, Course: %.2f", gnss_data.altitude, gnss_data.speed, gnss_data.course);
+    ESP_LOGI(TAG, "PDOP: %.2f, HDOP: %.2f, VDOP: %.2f", gnss_data.pdop, gnss_data.hdop, gnss_data.vdop);
+
+    // Ne rapporter les données que si elles sont valides (non nulles)
+    if (gnss_data.latitude != 0.0 && gnss_data.longitude != 0.0)
     {
-        ESP_LOGI(TAG, "Mode: %d, GPS SVs: %d, GLONASS SVs: %d, BEIDOU SVs: %d",
-                 gnss_data.mode, gnss_data.gps_svs, gnss_data.glonass_svs, gnss_data.beidou_svs);
-        ESP_LOGI(TAG, "Lat: %.5f%c, Lon: %.5f%c", gnss_data.latitude, gnss_data.ns_indicator, gnss_data.longitude, gnss_data.ew_indicator);
-        ESP_LOGI(TAG, "Date: %s, Time: %s", gnss_data.date, gnss_data.utc_time);
-        ESP_LOGI(TAG, "Alt: %.2f, Speed: %.2f, Course: %.2f", gnss_data.altitude, gnss_data.speed, gnss_data.course);
-        ESP_LOGI(TAG, "PDOP: %.2f, HDOP: %.2f, VDOP: %.2f", gnss_data.pdop, gnss_data.hdop, gnss_data.vdop);
+        device_report_telemetry(DEVICE_GATEWAY_MAC, "lat", gnss_data.latitude);
+        device_report_telemetry(DEVICE_GATEWAY_MAC, "lon", gnss_data.longitude);
+    }
+    if (gnss_data.altitude != 0.0)
+    {
+        device_report_telemetry(DEVICE_GATEWAY_MAC, "alt", gnss_data.altitude);
+    }
+    if (gnss_data.speed != 0.0)
+    {
+        device_report_telemetry(DEVICE_GATEWAY_MAC, "speed", gnss_data.speed);
+    }
 
-        // Ne rapporter les données que si elles sont valides (non nulles)
-        if (gnss_data.latitude != 0.0 && gnss_data.longitude != 0.0)
+    if (data)
+    {
+        *data = gnss_data;
+    }
+
+    return ESP_OK;
+}
+
+void gnss_task(void *pvParameters)
+{
+    gnss_data_t gnss_data;
+    uint32_t start_time = pdMS_TO_TICKS(xTaskGetTickCount());
+    char response[512];
+    esp_err_t ret;
+    bool success = false;
+    while (1)
+    {
+
+        if (ask_gnss_data(&gnss_data) == ESP_OK)
         {
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "lat", gnss_data.latitude);
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "lon", gnss_data.longitude);
-        }
-        if (gnss_data.altitude != 0.0)
-        {
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "alt", gnss_data.altitude);
-        }
-        if (gnss_data.speed != 0.0)
-        {
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "speed", gnss_data.speed);
+            success = true;
         }
 
-        if (data)
+        if (success || (pdMS_TO_TICKS(xTaskGetTickCount()) - start_time) > pdMS_TO_TICKS(10 * 60 * 1000))
         {
-            *data = gnss_data;
+            if (success)
+            {
+                ESP_LOGI(TAG, "GNSS data acquired successfully");
+            }
+            else
+            {
+                ESP_LOGI(TAG, "GNSS task timeout after 10 minutes");
+            }
+            ret = send_at_command_wait_response("AT+CGNSSPWR=0", "OK", response, sizeof(response), 10000);
+            if (ret == ESP_OK)
+            {
+                ESP_LOGI(TAG, "GNSS powered off");
+            }
+            else
+            {
+                ESP_LOGE(TAG, "Failed to power off GNSS: %s", response);
+            }
+            gnss_initialized = false;
+            gnss_requested = false;
+            vTaskDelete(NULL);
         }
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
+}
+
+esp_err_t request_gnss_data()
+{
+    char response[BUF_SIZE];
+    esp_err_t ret;
+
+    if (!main_network_connected())
+    {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    gnss_requested = true;
+    if (!gnss_initialized)
+    {
+        // power on gnss
+        ret = send_at_command_wait_response("AT+CGNSSPWR=1", "+CGNSSPWR: READY!", response, sizeof(response), 16000);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to power on GNSS: %s", response);
+            return ret;
+        }
+        ESP_LOGI(TAG, "GNSS powered on");
+
+        ret = send_at_command_wait_response("AT+CGNSSTST=1", "OK", response, sizeof(response), 2000);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to start GNSS nmea: %s", response);
+            return ret;
+        }
+        ESP_LOGI(TAG, "GNSS NMEA started");
+
+        ret = send_at_command_wait_response("AT+CGNSSPORTSWITCH=1,0", "OK", response, sizeof(response), 2000);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to switch GNSS port: %s", response);
+            return ret;
+        }
+        ESP_LOGI(TAG, "GNSS port switched");
+
+        ret = send_at_command_wait_response("AT+CAGPS", "+AGPS: success.", response, sizeof(response), 16000);
+        if (ret != ESP_OK)
+        {
+            ESP_LOGW(TAG, "Failed to get AGPS: %s", response);
+        }
+        ESP_LOGI(TAG, "GNSS Assisted positioning started");
+        xTaskCreate(gnss_task, "GNSS Task", 8 * 1024, NULL, 5, NULL);
+        gnss_initialized = true;
     }
 
     return ESP_OK;

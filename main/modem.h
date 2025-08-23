@@ -26,8 +26,8 @@ extern "C"
         float vdop;
         char ns_indicator;
         char ew_indicator;
-        char date[7];
-        char utc_time[10];
+        char date[16];
+        char utc_time[16];
     } gnss_data_t;
 
     void modem_task(void *pvParameters);
@@ -35,7 +35,7 @@ extern "C"
     esp_err_t init_at_modem();
     esp_err_t get_rssi(int *rssi, int *ber);
     esp_err_t modem_update_telemetry();
-    esp_err_t get_gnss_data(gnss_data_t *data);
+    esp_err_t request_gnss_data();
 #ifdef MODEM_BYPASS_MODE
     void modem_bypass_task(void *pvParameters);
 #endif
