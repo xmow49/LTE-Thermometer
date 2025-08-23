@@ -2,6 +2,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "lcd.h"
 
 #define TAG "MY_TIME"
 
@@ -39,17 +40,15 @@ esp_err_t my_time_update()
     // Wait for time to be set
     int retry = 0;
     const int retry_count = 120;
+    lcd_setup_msg("Récupération", "de l'heure...");
+
     while (sntp_get_sync_status() == SNTP_SYNC_STATUS_RESET && ++retry < retry_count)
     {
         ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, retry_count);
         vTaskDelay(2000 / portTICK_PERIOD_MS);
-        if (retry % 10 == 0)
-        {
-            ESP_LOGI(TAG, "Fore resend request to NTP server");
-            esp_sntp_stop();
-            esp_sntp_set_sync_interval(30000); // Set sync interval to 30 seconds
-            esp_sntp_init();                   // Reinitialize SNTP to resend request
-        }
+        char buf[64];
+        snprintf(buf, sizeof(buf), "de l'heure %d/%d", retry, retry_count);
+        lcd_setup_msg("Récupération", buf);
     }
 
     if (retry == retry_count)

@@ -401,7 +401,7 @@ void app_main(void)
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 
-    lcd_setup_msg("Récupération", "de l'heure");
+    modem_update_telemetry();
     esp_err_t err = my_time_update();
     if (err != ESP_OK)
     {

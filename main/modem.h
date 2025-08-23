@@ -35,7 +35,7 @@ extern "C"
     esp_err_t init_at_modem();
     esp_err_t get_rssi(int *rssi, int *ber);
     esp_err_t modem_update_telemetry();
-    esp_err_t request_gnss_data();
+    esp_err_t request_gnss_data(uint32_t timeout_s, uint32_t interval_s);
 #ifdef MODEM_BYPASS_MODE
     void modem_bypass_task(void *pvParameters);
 #endif

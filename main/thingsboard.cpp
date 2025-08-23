@@ -279,7 +279,46 @@ void processRPCLogs(const JsonVariantConst &data, JsonDocument &response)
 void processRPCGnss(const JsonVariantConst &data, JsonDocument &response)
 {
     ESP_LOGI(TAG, "Received RPC method 'gnss'");
-    esp_err_t ret = request_gnss_data();
+
+    if (!data.containsKey("timeout_s"))
+    {
+        response["status"] = "missing timeout_s key";
+    }
+
+    // check is a long int positive: error otherwise
+    if (!data["timeout_s"].is<long>())
+    {
+        response["status"] = "invalid timeout_s value";
+        return;
+    }
+
+    long timeout = data["timeout_s"];
+    if (timeout <= 0)
+    {
+        response["status"] = "invalid timeout_s value";
+        return;
+    }
+
+    if (!data.containsKey("interval_s"))
+    {
+        response["status"] = "missing interval_s key";
+        return;
+    }
+
+    if (!data["interval_s"].is<long>())
+    {
+        response["status"] = "invalid interval_s value";
+        return;
+    }
+
+    long interval = data["interval_s"];
+    if (interval <= 0)
+    {
+        response["status"] = "invalid interval_s value";
+        return;
+    }
+
+    esp_err_t ret = request_gnss_data(timeout, interval);
     if (ret == ESP_ERR_INVALID_STATE)
     {
         ESP_LOGE(TAG, "GNSS data not available");

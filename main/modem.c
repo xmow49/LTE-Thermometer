@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/uart.h"
@@ -10,6 +11,7 @@
 #include "config.h"
 #include "lcd.h"
 #include "modem.h"
+#include "usbh_modem_board.h"
 
 // Décommentez cette ligne pour activer le mode bypass
 // #define MODEM_BYPASS_MODE
@@ -17,7 +19,13 @@
 static const char *TAG = "MODEM";
 
 bool gnss_initialized = false;
-bool gnss_requested = false;
+
+typedef struct
+{
+    uint32_t timeout_s;
+    uint32_t interval_s;
+} gnss_request_t;
+
 #define BUF_SIZE 1024
 #define UART_NUM UART_NUM_1
 #define RX_PIN 17
@@ -256,16 +264,9 @@ esp_err_t modem_update_telemetry()
         {
             ESP_LOGE(TAG, "Failed to get RSSI: %s", esp_err_to_name(ret));
         }
+        lcd_set_signal_rssi(-100);
     }
 
-    if (gnss_requested)
-    {
-        ret = request_gnss_data();
-        if (ret == ESP_OK)
-        {
-            ESP_LOGI(TAG, "GNSS data updated");
-        }
-    }
     return ret;
 }
 
@@ -391,9 +392,28 @@ esp_err_t ask_gnss_data(gnss_data_t *data)
         return ESP_ERR_INVALID_STATE;
     }
 
+    // Appliquer les conventions géographiques standards pour les coordonnées
+    // Latitude positive → Nord de l'équateur (N)
+    // Latitude négative → Sud de l'équateur (S)
+    if (gnss_data.ns_indicator == 'S' && gnss_data.latitude > 0)
+    {
+        gnss_data.latitude = -gnss_data.latitude;
+        ESP_LOGI(TAG, "Applied South latitude correction: latitude is now negative");
+    }
+
+    // Longitude positive → Est du méridien de Greenwich (E)
+    // Longitude négative → Ouest du méridien de Greenwich (W)
+    if (gnss_data.ew_indicator == 'W' && gnss_data.longitude > 0)
+    {
+        gnss_data.longitude = -gnss_data.longitude;
+        ESP_LOGI(TAG, "Applied West longitude correction: longitude is now negative");
+    }
+
     ESP_LOGI(TAG, "Mode: %d, GPS SVs: %d, GLONASS SVs: %d, BEIDOU SVs: %d",
              gnss_data.mode, gnss_data.gps_svs, gnss_data.glonass_svs, gnss_data.beidou_svs);
-    ESP_LOGI(TAG, "Lat: %.5f%c, Lon: %.5f%c", gnss_data.latitude, gnss_data.ns_indicator, gnss_data.longitude, gnss_data.ew_indicator);
+    ESP_LOGI(TAG, "Lat: %.5f%c (corrected: %.5f), Lon: %.5f%c (corrected: %.5f)",
+             fabs(gnss_data.latitude), gnss_data.ns_indicator, gnss_data.latitude,
+             fabs(gnss_data.longitude), gnss_data.ew_indicator, gnss_data.longitude);
     ESP_LOGI(TAG, "Date: %s, Time: %s", gnss_data.date, gnss_data.utc_time);
     ESP_LOGI(TAG, "Alt: %.2f, Speed: %.2f, Course: %.2f", gnss_data.altitude, gnss_data.speed, gnss_data.course);
     ESP_LOGI(TAG, "PDOP: %.2f, HDOP: %.2f, VDOP: %.2f", gnss_data.pdop, gnss_data.hdop, gnss_data.vdop);
@@ -427,25 +447,71 @@ void gnss_task(void *pvParameters)
     uint32_t start_time = pdMS_TO_TICKS(xTaskGetTickCount());
     char response[512];
     esp_err_t ret;
-    bool success = false;
+
+    gnss_request_t *gnss_request = (gnss_request_t *)pvParameters;
+    if (!gnss_request)
+    {
+        ESP_LOGE(TAG, "Invalid GNSS request");
+        vTaskDelete(NULL);
+        return;
+    }
+
+    uint32_t timeout_s = gnss_request->timeout_s;
+    uint32_t interval_s = gnss_request->interval_s;
+
+    // Rest of the task implementation...
+    bool fix = false;
+
+    if (gnss_request->timeout_s == 0)
+    {
+        timeout_s = 10 * 60; // default timeout 10 minutes
+    }
+    else if (timeout_s > 3600)
+    {
+        timeout_s = 3600;
+    }
+    else
+    {
+        timeout_s = gnss_request->timeout_s;
+    }
+
+    if (gnss_request->interval_s == 0)
+    {
+        interval_s = 10; // default interval 10 seconds
+    }
+    else
+    {
+        interval_s = gnss_request->interval_s;
+    }
+
+    ESP_LOGI(TAG, "GNSS task started with timeout %d seconds", timeout_s);
+
+    uint32_t last_interval_time = pdMS_TO_TICKS(xTaskGetTickCount());
     while (1)
     {
-
-        if (ask_gnss_data(&gnss_data) == ESP_OK)
+        if (fix)
         {
-            success = true;
-        }
-
-        if (success || (pdMS_TO_TICKS(xTaskGetTickCount()) - start_time) > pdMS_TO_TICKS(10 * 60 * 1000))
-        {
-            if (success)
+            if ((pdMS_TO_TICKS(xTaskGetTickCount()) - last_interval_time) >= pdMS_TO_TICKS(interval_s * 1000))
             {
+                if (ask_gnss_data(&gnss_data) == ESP_OK)
+                {
+                    ESP_LOGI(TAG, "GNSS data acquired successfully");
+                }
+                last_interval_time = pdMS_TO_TICKS(xTaskGetTickCount());
+            }
+        }
+        else
+        {
+            if (ask_gnss_data(&gnss_data) == ESP_OK)
+            {
+                fix = true;
                 ESP_LOGI(TAG, "GNSS data acquired successfully");
             }
-            else
-            {
-                ESP_LOGI(TAG, "GNSS task timeout after 10 minutes");
-            }
+        }
+
+        if ((pdMS_TO_TICKS(xTaskGetTickCount()) - start_time) > pdMS_TO_TICKS(timeout_s * 1000))
+        {
+            ESP_LOGI(TAG, "GNSS task timeout after %d seconds", timeout_s);
             ret = send_at_command_wait_response("AT+CGNSSPWR=0", "OK", response, sizeof(response), 10000);
             if (ret == ESP_OK)
             {
@@ -456,7 +522,8 @@ void gnss_task(void *pvParameters)
                 ESP_LOGE(TAG, "Failed to power off GNSS: %s", response);
             }
             gnss_initialized = false;
-            gnss_requested = false;
+            ESP_LOGI(TAG, "Restart modem...");
+            modem_board_force_reset();
             vTaskDelete(NULL);
         }
 
@@ -464,7 +531,7 @@ void gnss_task(void *pvParameters)
     }
 }
 
-esp_err_t request_gnss_data()
+esp_err_t request_gnss_data(uint32_t timeout_s, uint32_t interval_s)
 {
     char response[BUF_SIZE];
     esp_err_t ret;
@@ -474,7 +541,6 @@ esp_err_t request_gnss_data()
         return ESP_ERR_INVALID_STATE;
     }
 
-    gnss_requested = true;
     if (!gnss_initialized)
     {
         // power on gnss
@@ -508,7 +574,18 @@ esp_err_t request_gnss_data()
             ESP_LOGW(TAG, "Failed to get AGPS: %s", response);
         }
         ESP_LOGI(TAG, "GNSS Assisted positioning started");
-        xTaskCreate(gnss_task, "GNSS Task", 8 * 1024, NULL, 5, NULL);
+
+        gnss_request_t *gnss_request = pvPortMalloc(sizeof(gnss_request_t));
+        if (!gnss_request)
+        {
+            ESP_LOGE(TAG, "Failed to allocate memory for GNSS request");
+            return ESP_ERR_NO_MEM;
+        }
+
+        gnss_request->timeout_s = timeout_s;
+        gnss_request->interval_s = interval_s;
+
+        xTaskCreate(gnss_task, "GNSS Task", 8 * 1024, gnss_request, 5, NULL);
         gnss_initialized = true;
     }
 
