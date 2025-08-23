@@ -23,6 +23,19 @@
 #include "battery.h"
 #include "logs.h"
 
+#ifdef __has_include
+#if __has_include("default_conf.h")
+#include "default_conf.h"
+#define HAS_DEFAULT_CONF 1
+#else
+#define HAS_DEFAULT_CONF 0
+#endif
+#else
+// Fallback for older compilers
+#include "default_conf.h"
+#define HAS_DEFAULT_CONF 1
+#endif
+
 #include "crash.h"
 
 #include <OTA_Firmware_Update.h>
@@ -378,6 +391,15 @@ extern "C" void tb_task(void *pvParameters)
     {
         ESP_LOGE("tb_task", "Failed to read root CA");
         lcd_setup_msg("Erreur SD", "Erreur Root CA");
+
+#if HAS_DEFAULT_CONF
+        ESP_LOGI("tb_task", "Using default root CA");
+        strcpy(root_ca, DEFAULT_ROOT_CA);
+        mqttClient.set_server_certificate(root_ca);
+#else
+        ESP_LOGE("tb_task", "No default root CA available, cannot set up secure connection");
+        vTaskDelete(NULL);
+#endif
     }
 
     ret = sd_read_server_conf(thingsboard_server, (int *)&thingsboard_port, client_id, username, password);
@@ -392,40 +414,58 @@ extern "C" void tb_task(void *pvParameters)
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to read server configuration, exiting");
+        ESP_LOGE(TAG, "Failed to read server configuration: using defaults");
         lcd_setup_msg("Erreur SD", "Erreur Conf");
+
+#if HAS_DEFAULT_CONF
+        ESP_LOGI(TAG, "Using default server configuration");
+        strcpy(thingsboard_server, DEFAULT_THINGSBOARD_SERVER);
+        thingsboard_port = DEFAULT_THINGSBOARD_PORT;
+        strcpy(client_id, DEFAULT_DEVICE_ID);
+        strcpy(username, DEFAULT_USERNAME);
+        strcpy(password, DEFAULT_PASSWORD);
+#else
+        ESP_LOGE(TAG, "No default server configuration available");
         vTaskDelete(NULL);
-        return;
+#endif
     }
 
     ret = sd_read_devices();
     if (ret == ESP_OK)
     {
         device_list();
-
-        DeviceList devices = get_devices_list();
-        std::vector<Device *> &device_list = devices.get_all();
-
-        for (int i = 0; i < device_list.size(); i++)
-        {
-            Device *device = device_list[i];
-            if (!device || device->getMacString() == DEVICE_GATEWAY_MAC)
-            {
-                continue;
-            }
-            ret = espnow_register_device(device->getMac());
-            if (ret != ESP_OK)
-            {
-                ESP_LOGE(TAG, "Failed to register device: %s", device->getMacString().c_str());
-            }
-        }
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to read devices");
+        ESP_LOGE(TAG, "Failed to read devices: using defaults");
         lcd_setup_msg("Erreur SD", "Erreur Devices");
+
+#if HAS_DEFAULT_CONF
+        ESP_LOGI(TAG, "Using default device configuration");
+        device_add("B", "00:00:00:00:00:00");
+        device_add(DEFAULT_DEVICE2_NAME, DEFAULT_DEVICE2_MAC);
+#else
+        ESP_LOGE(TAG, "No default device configuration available");
+        vTaskDelete(NULL);
+#endif
     }
 
+    DeviceList devices = get_devices_list();
+    std::vector<Device *> &device_list = devices.get_all();
+
+    for (int i = 0; i < device_list.size(); i++)
+    {
+        Device *device = device_list[i];
+        if (!device || device->getMacString() == DEVICE_GATEWAY_MAC)
+        {
+            continue;
+        }
+        ret = espnow_register_device(device->getMac());
+        if (ret != ESP_OK)
+        {
+            ESP_LOGE(TAG, "Failed to register device: %s", device->getMacString().c_str());
+        }
+    }
     uint32_t keepalive = config.keepalive_interval;
     mqttClient.set_keep_alive_timeout(keepalive);
     TickType_t last_update = xTaskGetTickCount();
@@ -530,23 +570,22 @@ extern "C" void tb_task(void *pvParameters)
             DeviceList &devices = get_devices_list();
             for (const auto &device : devices.get_all())
             {
-                if (device->getTelemetryList().size() > 0)
+
+                std::string json = device->computeTelemetryJson();
+                if (json == "")
                 {
-                    std::string json = device->computeTelemetryJson();
-                    if (json == "")
-                    {
-                        ESP_LOGE(TAG, "Failed to compute telemetry JSON for device %s", device->getName().c_str());
-                    }
-                    if (!device->sendJsonTelemetry((char *)json.c_str()))
-                    {
-                        ESP_LOGE(TAG, "Failed to send telemetry for device %s", device->getName().c_str());
-                        device->moveBackTelemetry();
-                    }
-                    else
-                    {
-                        device_with_telemetry_sent++;
-                        device->clearTelemetryJson();
-                    }
+                    ESP_LOGE(TAG, "Failed to compute telemetry JSON for device %s", device->getName().c_str());
+                    continue;
+                }
+                if (!device->sendJsonTelemetry((char *)json.c_str()))
+                {
+                    ESP_LOGE(TAG, "Failed to send telemetry for device %s", device->getName().c_str());
+                    device->moveBackTelemetry();
+                }
+                else
+                {
+                    device_with_telemetry_sent++;
+                    device->clearTelemetryJson();
                 }
             }
 

@@ -1,0 +1,22 @@
+
+
+#ifndef DEFAULT_CONF_H
+#define DEFAULT_CONF_H
+
+#include <stdint.h>
+
+#define DEFAULT_ROOT_CA                     \
+    "-----BEGIN CERTIFICATE-----\n"         \
+    "Paste here your root CA certificate\n" \
+    "-----END CERTIFICATE-----\n"
+
+#define DEFAULT_THINGSBOARD_SERVER ""
+#define DEFAULT_THINGSBOARD_PORT 9883
+#define DEFAULT_DEVICE_ID ""
+#define DEFAULT_USERNAME ""
+#define DEFAULT_PASSWORD ""
+
+#define DEFAULT_DEVICE2_NAME ""
+#define DEFAULT_DEVICE2_MAC ""
+
+#endif // DEFAULT_CONF_H

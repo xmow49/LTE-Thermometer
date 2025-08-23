@@ -59,3 +59,4 @@ sdkconfig.old
 .vscode/settings.json
 
 crash
+default_conf.h

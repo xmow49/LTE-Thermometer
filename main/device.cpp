@@ -29,7 +29,7 @@ void mac_to_string(const uint8_t *mac, char *mac_str)
              mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 }
 
-Device::Device(char *name, char *mac)
+Device::Device(const char *name, const char *mac)
 {
     this->name = name;
     mac_from_string(mac, this->mac);
@@ -169,7 +169,7 @@ void Device::addTelemetry(TelemetryReport telemetry)
     xSemaphoreGive(telemetry_mutex);
 }
 
-extern "C" void device_add(char *name, char *mac)
+extern "C" void device_add(const char *name, const char *mac)
 {
     deviceList.add(new Device(name, mac));
 }
@@ -293,9 +293,13 @@ std::string Device::computeTelemetryJson()
     auto sd_telemetry = sd_read_device_telemetry(this->getName().c_str(), true);
     telemetry_list_json.insert(telemetry_list_json.end(), sd_telemetry.begin(), sd_telemetry.end());
 
-    telemetry_list.clear(); // Optionnel car telemetry_list est déjà vide après std::move
-
     xSemaphoreGive(telemetry_mutex);
+
+    if (telemetry_list_json.empty())
+    {
+        ESP_LOGI(TAG, "No telemetry to send for device %s", getName().c_str());
+        return "";
+    }
 
     for (const auto &telemetry : telemetry_list_json)
     {

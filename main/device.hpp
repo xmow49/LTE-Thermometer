@@ -40,7 +40,7 @@ public:
 class Device
 {
 public:
-    Device(char *name, char *mac);
+    Device(const char *name, const char *mac);
     ~Device();
     bool sendJsonTelemetry(char *json);
     bool sendTelemetry(char *key, double value);
@@ -91,7 +91,7 @@ extern "C"
 #endif
 
     void device_list();
-    void device_add(char *name, char *mac);
+    void device_add(const char *name, const char *mac);
     void device_receive(char *mac, telemetry_message data);
     void device_report_telemetry(char *mac, char *key, double value);
 
