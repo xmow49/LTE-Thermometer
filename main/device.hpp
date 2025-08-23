@@ -31,9 +31,9 @@ class TelemetryReport
 {
 public:
     char name[16];
-    float value;
+    double value;
     time_t timestamp;
-    TelemetryReport(const char *name, float value);
+    TelemetryReport(const char *name, double value);
     ~TelemetryReport();
 };
 
@@ -43,7 +43,7 @@ public:
     Device(char *name, char *mac);
     ~Device();
     bool sendJsonTelemetry(char *json);
-    bool sendTelemetry(char *key, float value);
+    bool sendTelemetry(char *key, double value);
 
     bool isConnected() const { return connected; }
     const uint8_t *getMac() const { return mac; }
@@ -93,7 +93,8 @@ extern "C"
     void device_list();
     void device_add(char *name, char *mac);
     void device_receive(char *mac, telemetry_message data);
-    void device_report_telemetry(char *mac, char *key, float value);
+    void device_report_telemetry(char *mac, char *key, double value);
+
     bool device_gateway_send_json_telemetry(char *json);
     void device_start_telemetry_save_task(void); // New function to start telemetry save task
 

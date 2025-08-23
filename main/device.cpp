@@ -92,7 +92,7 @@ bool Device::sendJsonTelemetry(char *json)
     }
 }
 
-bool Device::sendTelemetry(char *key, float value)
+bool Device::sendTelemetry(char *key, double value)
 {
     DynamicJsonDocument doc(MAX_MESSAGE_SIZE);
     JsonObject root = doc.to<JsonObject>();
@@ -194,7 +194,7 @@ extern "C" void device_receive(char *mac, telemetry_message data)
 
         device->addTelemetry(TelemetryReport("b", data.battery_percentage));
 
-        device->addTelemetry(TelemetryReport("b_v", data.battery_voltage_mv / 1000.0f)); // Convert mV to V
+        device->addTelemetry(TelemetryReport("b_v", data.battery_voltage_mv / 1000.0)); // Convert mV to V
         device->addTelemetry(TelemetryReport("b_p", data.battery_percentage));
     }
     else
@@ -232,7 +232,7 @@ Device *DeviceList::get_gateway()
     return find_by_str_mac(DEVICE_GATEWAY_MAC);
 }
 
-extern "C" void device_report_telemetry(char *mac, char *key, float value)
+extern "C" void device_report_telemetry(char *mac, char *key, double value)
 {
     Device *device = deviceList.find_by_str_mac(mac);
     if (device)
@@ -246,7 +246,7 @@ extern "C" void device_report_telemetry(char *mac, char *key, float value)
     }
 }
 
-TelemetryReport::TelemetryReport(const char *name, float value)
+TelemetryReport::TelemetryReport(const char *name, double value)
 {
     strncpy(this->name, name, sizeof(this->name) - 1);
     this->name[sizeof(this->name) - 1] = '\0';
@@ -278,7 +278,7 @@ std::string Device::computeTelemetryJson()
     std::map<time_t, JsonObject> timestampMap;
 
     // Map for storing the latest values of telemetry with timestamp 0
-    std::map<std::string, float> zeroTimestampMap;
+    std::map<std::string, double> zeroTimestampMap;
 
     if (xSemaphoreTake(telemetry_mutex, pdMS_TO_TICKS(3000)) != pdTRUE)
     {
@@ -316,10 +316,20 @@ std::string Device::computeTelemetryJson()
 
             JsonObject valuesObj = timestampMap[telemetry.timestamp];
 
-            // Round the value to 7 decimal places
-            char roundedValue[32];
-            snprintf(roundedValue, sizeof(roundedValue), "%.7f", telemetry.value);
-            valuesObj[telemetry.name] = atof(roundedValue);
+            if (strncmp(telemetry.name, "lat", 3) == 0 || strncmp(telemetry.name, "lon", 3) == 0)
+            {
+                // Round latitude and longitude to 7 decimal places
+                char roundedValue[32];
+                snprintf(roundedValue, sizeof(roundedValue), "%.7f", telemetry.value);
+                valuesObj[telemetry.name] = atof(roundedValue);
+            }
+            else
+            {
+                // Round the value to 2 decimal places
+                char roundedValue[32];
+                snprintf(roundedValue, sizeof(roundedValue), "%.2f", telemetry.value);
+                valuesObj[telemetry.name] = atof(roundedValue);
+            }
         }
     }
 
@@ -328,7 +338,18 @@ std::string Device::computeTelemetryJson()
     {
         JsonObject obj = array.createNestedObject();
         char roundedValue[32];
-        snprintf(roundedValue, sizeof(roundedValue), "%.7f", pair.second);
+        
+        if (strncmp(pair.first.c_str(), "lat", 3) == 0 || strncmp(pair.first.c_str(), "lon", 3) == 0)
+        {
+            // Round latitude and longitude to 7 decimal places
+            snprintf(roundedValue, sizeof(roundedValue), "%.7f", pair.second);
+        }
+        else
+        {
+            // Round the value to 2 decimal places
+            snprintf(roundedValue, sizeof(roundedValue), "%.2f", pair.second);
+        }
+        
         obj[pair.first] = atof(roundedValue);
     }
 

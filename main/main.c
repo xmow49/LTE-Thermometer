@@ -40,6 +40,8 @@
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "freertos/event_groups.h"
+#include "lwip/stats.h"
+#include "esp_netif.h"
 
 #define USE_WIFI 0
 
@@ -228,6 +230,89 @@ bool main_network_connected()
     return network_connected && modem_initialized && ping_get_value() != -1;
 }
 
+void print_lwip_stats()
+{
+#if LWIP_STATS
+    ESP_LOGI(TAG, "=== LWIP Statistics ===");
+
+#if MEM_STATS
+    // Memory stats
+    ESP_LOGI(TAG, "Memory:");
+    ESP_LOGI(TAG, "  heap: used=%" MEM_SIZE_F ", max=%" MEM_SIZE_F ", err=%" STAT_COUNTER_F,
+             lwip_stats.mem.used, lwip_stats.mem.max, lwip_stats.mem.err);
+#endif
+
+#if MEMP_STATS
+    // Memory pool stats
+    ESP_LOGI(TAG, "  memp_sys: used=%" MEM_SIZE_F ", max=%" MEM_SIZE_F ", err=%" STAT_COUNTER_F,
+             lwip_stats.memp[MEMP_SYS_TIMEOUT]->used, lwip_stats.memp[MEMP_SYS_TIMEOUT]->max, lwip_stats.memp[MEMP_SYS_TIMEOUT]->err);
+#endif
+
+#if LINK_STATS
+    // Link layer stats
+    ESP_LOGI(TAG, "Link layer:");
+    ESP_LOGI(TAG, "  xmit=%" STAT_COUNTER_F ", recv=%" STAT_COUNTER_F ", fw=%" STAT_COUNTER_F ", drop=%" STAT_COUNTER_F ", chkerr=%" STAT_COUNTER_F,
+             lwip_stats.link.xmit, lwip_stats.link.recv, lwip_stats.link.fw, lwip_stats.link.drop, lwip_stats.link.chkerr);
+#endif
+
+#if IP_STATS
+    // IP stats
+    ESP_LOGI(TAG, "IP:");
+    ESP_LOGI(TAG, "  xmit=%" STAT_COUNTER_F ", recv=%" STAT_COUNTER_F ", fw=%" STAT_COUNTER_F ", drop=%" STAT_COUNTER_F ", chkerr=%" STAT_COUNTER_F,
+             lwip_stats.ip.xmit, lwip_stats.ip.recv, lwip_stats.ip.fw, lwip_stats.ip.drop, lwip_stats.ip.chkerr);
+#endif
+
+#if TCP_STATS
+    // TCP stats
+    ESP_LOGI(TAG, "TCP:");
+    ESP_LOGI(TAG, "  xmit=%" STAT_COUNTER_F ", recv=%" STAT_COUNTER_F ", fw=%" STAT_COUNTER_F ", drop=%" STAT_COUNTER_F ", chkerr=%" STAT_COUNTER_F,
+             lwip_stats.tcp.xmit, lwip_stats.tcp.recv, lwip_stats.tcp.fw, lwip_stats.tcp.drop, lwip_stats.tcp.chkerr);
+    ESP_LOGI(TAG, "  memerr=%" STAT_COUNTER_F ", rterr=%" STAT_COUNTER_F,
+             lwip_stats.tcp.memerr, lwip_stats.tcp.rterr);
+#endif
+
+#if UDP_STATS
+    // UDP stats
+    ESP_LOGI(TAG, "UDP:");
+    ESP_LOGI(TAG, "  xmit=%" STAT_COUNTER_F ", recv=%" STAT_COUNTER_F ", fw=%" STAT_COUNTER_F ", drop=%" STAT_COUNTER_F ", chkerr=%" STAT_COUNTER_F,
+             lwip_stats.udp.xmit, lwip_stats.udp.recv, lwip_stats.udp.fw, lwip_stats.udp.drop, lwip_stats.udp.chkerr);
+#endif
+
+#if ICMP_STATS
+    // ICMP stats
+    ESP_LOGI(TAG, "ICMP:");
+    ESP_LOGI(TAG, "  xmit=%" STAT_COUNTER_F ", recv=%" STAT_COUNTER_F ", drop=%" STAT_COUNTER_F ", chkerr=%" STAT_COUNTER_F,
+             lwip_stats.icmp.xmit, lwip_stats.icmp.recv, lwip_stats.icmp.drop, lwip_stats.icmp.chkerr);
+#endif
+
+#if SYS_STATS
+    // System stats
+    ESP_LOGI(TAG, "System:");
+    ESP_LOGI(TAG, "  sem: used=%" STAT_COUNTER_F ", max=%" STAT_COUNTER_F ", err=%" STAT_COUNTER_F,
+             lwip_stats.sys.sem.used, lwip_stats.sys.sem.max, lwip_stats.sys.sem.err);
+    ESP_LOGI(TAG, "  mutex: used=%" STAT_COUNTER_F ", max=%" STAT_COUNTER_F ", err=%" STAT_COUNTER_F,
+             lwip_stats.sys.mutex.used, lwip_stats.sys.mutex.max, lwip_stats.sys.mutex.err);
+    ESP_LOGI(TAG, "  mbox: used=%" STAT_COUNTER_F ", max=%" STAT_COUNTER_F ", err=%" STAT_COUNTER_F,
+             lwip_stats.sys.mbox.used, lwip_stats.sys.mbox.max, lwip_stats.sys.mbox.err);
+#endif
+
+#if MIB2_STATS
+    // MIB2 stats (including byte counters)
+    ESP_LOGI(TAG, "MIB2 Traffic (bytes):");
+    ESP_LOGI(TAG, "  IP: in=%" U32_F " packets, out=%" U32_F " packets",
+             lwip_stats.mib2.ipinreceives, lwip_stats.mib2.ipoutrequests);
+    ESP_LOGI(TAG, "  TCP: in=%" U32_F " segs, out=%" U32_F " segs, retrans=%" U32_F,
+             lwip_stats.mib2.tcpinsegs, lwip_stats.mib2.tcpoutsegs, lwip_stats.mib2.tcpretranssegs);
+    ESP_LOGI(TAG, "  UDP: in=%" U32_F " datagrams, out=%" U32_F " datagrams",
+             lwip_stats.mib2.udpindatagrams, lwip_stats.mib2.udpoutdatagrams);
+#endif
+
+    ESP_LOGI(TAG, "======================");
+#else
+    ESP_LOGW(TAG, "LWIP_STATS is not enabled");
+#endif
+}
+
 void app_main(void)
 {
     logs_init();
@@ -347,6 +432,7 @@ void app_main(void)
     }
 
     // send_sms("+33000000000", "Hello.");
+
     while (1)
     {
         main_report_telemetry();
@@ -360,6 +446,13 @@ void main_report_telemetry()
     device_report_telemetry(DEVICE_GATEWAY_MAC, "ram", esp_get_free_heap_size());
     device_report_telemetry(DEVICE_GATEWAY_MAC, "heap", esp_get_free_internal_heap_size());
     device_report_telemetry(DEVICE_GATEWAY_MAC, "up", pdTICKS_TO_MS(xTaskGetTickCount()) / 1000);
+
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_link_tx", lwip_stats.link.xmit);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_link_rx", lwip_stats.link.recv);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_tcp_tx", lwip_stats.tcp.xmit);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_tcp_rx", lwip_stats.tcp.recv);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_udp_tx", lwip_stats.udp.xmit);
+    device_report_telemetry(DEVICE_GATEWAY_MAC, "lwip_udp_rx", lwip_stats.udp.recv);
 
     ret = temperature_sensor_enable(temp_handle);
     if (ret == ESP_OK)

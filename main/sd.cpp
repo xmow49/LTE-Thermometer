@@ -351,7 +351,7 @@ void ensure_device_telemetry_dir(const char *device_name)
 }
 
 // Fonction pour sauvegarder une seule mesure de télémétrie
-esp_err_t sd_save_telemetry(const char *device_name, const char *name, float value)
+esp_err_t sd_save_telemetry(const char *device_name, const char *name, double value)
 {
     if (!device_name || !name)
     {
@@ -383,12 +383,12 @@ esp_err_t sd_save_telemetry(const char *device_name, const char *name, float val
 
     // Obtenir le timestamp actuel
     time_t now = time(NULL);
-    fprintf(f, "%lld,%.2f\n", (long long)now, value);
+    fprintf(f, "%lld,%lf\n", (long long)now, value);
 
     fflush(f);        // Forcer l'écriture du buffer
     fsync(fileno(f)); // Synchroniser avec le disque
     fclose(f);
-    ESP_LOGI(TAG, "Saved telemetry: %s/%s = %.2f (ts: %lld)", device_name, name, value, (long long)now);
+    ESP_LOGI(TAG, "Saved telemetry: %s/%s = %lf (ts: %lld)", device_name, name, value, (long long)now);
     return ESP_OK;
 }
 
@@ -447,7 +447,7 @@ esp_err_t sd_save_telemetrys(Device *device, const std::vector<TelemetryReport> 
         // Écrire toutes les données pour ce nom
         for (const auto *report : reports)
         {
-            fprintf(f, "%lld,%.2f\n", (long long)report->timestamp, report->value);
+            fprintf(f, "%lld,%lf\n", (long long)report->timestamp, report->value);
         }
 
         fflush(f);        // Forcer l'écriture du buffer
@@ -507,7 +507,7 @@ std::vector<TelemetryReport> sd_read_telemetry(const char *device_name, const ch
         if (timestamp_str && value_str)
         {
             time_t timestamp = strtoll(timestamp_str, NULL, 10);
-            float value = strtof(value_str, NULL);
+            double value = strtod(value_str, NULL);
 
             // Créer un TelemetryReport
             TelemetryReport report(name, value);

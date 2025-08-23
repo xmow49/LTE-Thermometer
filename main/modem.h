@@ -16,8 +16,8 @@ extern "C"
         int gps_svs;
         int glonass_svs;
         int beidou_svs;
-        float latitude;
-        float longitude;
+        double latitude;
+        double longitude;
         float altitude;
         float speed;
         float course;

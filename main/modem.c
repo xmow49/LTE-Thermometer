@@ -317,10 +317,6 @@ esp_err_t get_gnss_data(gnss_data_t *data)
         return ret;
     }
 
-    char *tmp = "+CGNSSINFO: 3,11,,00,00,47.5451518,N,0.6673347,W,180825,202259.00,130.8,1.034,,3.23,2.25,2.31,06";
-
-    strcpy(response, tmp); // For testing purposes, replace with actual response
-
     // Parser les données de façon robuste, même si certains champs sont vides
     char *line_start = strstr(response, "+CGNSSINFO:");
     if (line_start)
@@ -433,12 +429,12 @@ esp_err_t get_gnss_data(gnss_data_t *data)
         // Ne rapporter les données que si elles sont valides (non nulles)
         if (gnss_data.latitude != 0.0 && gnss_data.longitude != 0.0)
         {
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "latitude", gnss_data.latitude);
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "longitude", gnss_data.longitude);
+            device_report_telemetry(DEVICE_GATEWAY_MAC, "lat", gnss_data.latitude);
+            device_report_telemetry(DEVICE_GATEWAY_MAC, "lon", gnss_data.longitude);
         }
         if (gnss_data.altitude != 0.0)
         {
-            device_report_telemetry(DEVICE_GATEWAY_MAC, "altitude", gnss_data.altitude);
+            device_report_telemetry(DEVICE_GATEWAY_MAC, "alt", gnss_data.altitude);
         }
         if (gnss_data.speed != 0.0)
         {

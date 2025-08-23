@@ -24,7 +24,7 @@ extern "C"
     esp_err_t sd_read_server_conf(char *server, int *port, char *client_id, char *username, char *password);
 
     // Fonctions de télémétrie
-    esp_err_t sd_save_telemetry(const char *device_name, const char *name, float value);
+    esp_err_t sd_save_telemetry(const char *device_name, const char *name, double value);
 
 #define MAX_DEVICES 10
 
