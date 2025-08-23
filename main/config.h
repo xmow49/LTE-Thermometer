@@ -15,6 +15,8 @@ extern "C"
         uint32_t interval_battery;
         uint32_t interval_ping;
         uint32_t interval_send_to_tb;
+        uint32_t interval_reboot;
+        uint32_t interval_network_error_reboot;
 
         uint32_t time_same_timestamp;
         uint32_t interval_lcd_timeout;

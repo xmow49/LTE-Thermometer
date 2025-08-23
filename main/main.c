@@ -48,11 +48,6 @@
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT BIT1
 
-#define REBOOT_INTERVAL_DAYS 7
-#define SECONDS_PER_DAY (24 * 60 * 60)
-
-static const uint32_t REBOOT_INTERVAL_S = REBOOT_INTERVAL_DAYS * SECONDS_PER_DAY;
-
 static EventGroupHandle_t s_wifi_event_group;
 static bool network_connected = false;
 static bool sim_ok = false;
@@ -338,8 +333,8 @@ void print_lwip_stats()
 void app_main(void)
 {
     logs_init();
+    ESP_LOGI(TAG, "===================== BOOT =====================");
     button_init();
-    // xTaskCreate(reboot_task, "reboot_task", 4 * 1024, NULL, 1, NULL);
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
@@ -353,6 +348,8 @@ void app_main(void)
 
     config_init();
     lcd_init();
+
+    xTaskCreate(reboot_task, "reboot_task", 4 * 1024, NULL, 1, NULL);
 
     if (button_get_state())
     {
@@ -499,7 +496,7 @@ void main_report_telemetry()
 
 void reboot_task(void *pvParameters)
 {
-    uint32_t hours_count = REBOOT_INTERVAL_S / (60 * 60);
+    uint32_t hours_count = config.interval_reboot / (60 * 60);
     uint32_t counter = 0;
     ESP_LOGI(TAG, "Reboot scheduled in %ld hours", hours_count);
     while (1)

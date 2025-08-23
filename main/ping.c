@@ -83,51 +83,72 @@ void ping_task(void *pvParameters)
 {
 
     uint32_t tries = 0;
-    uint32_t network_lost_time = pdMS_TO_TICKS(xTaskGetTickCount());
+    uint32_t network_lost_time = 0;
+    bool network_lost_time_set = false;
+
+    uint32_t last_ping_time = 0;
+    bool first_ping = true;
     while (1)
     {
         if (!main_network_attached())
         {
             ESP_LOGW(TAG, "Network not attached, waiting for connection");
+
+            // Only set the network lost time once when network is first lost
+            if (!network_lost_time_set)
+            {
+                network_lost_time = pdMS_TO_TICKS(xTaskGetTickCount());
+                network_lost_time_set = true;
+                ESP_LOGI(TAG, "Network lost time recorded");
+            }
+
+            // Check if network has been lost for more than 1 hour
+            if (pdMS_TO_TICKS(xTaskGetTickCount()) - network_lost_time > pdMS_TO_TICKS(config.interval_network_error_reboot * 1000))
+            {
+                ESP_LOGI(TAG, "Network lost for more than %d seconds: restarting", config.interval_network_error_reboot);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+                esp_restart();
+            }
+
             vTaskDelay(1000 / portTICK_PERIOD_MS);
-            network_lost_time = pdMS_TO_TICKS(xTaskGetTickCount());
             continue;
         }
 
-        if (pdMS_TO_TICKS(xTaskGetTickCount()) - network_lost_time > pdMS_TO_TICKS(3600 * 1000))
+        // Network is attached, reset the network lost time tracking
+        if (network_lost_time_set)
         {
-            ESP_LOGI(TAG, "Network lost for more than 1 hour: restarting");
-            vTaskDelay(pdMS_TO_TICKS(1000));
-            esp_restart();
+            ESP_LOGI(TAG, "Network reconnected, resetting lost time tracking");
+            network_lost_time_set = false;
+            network_lost_time = 0;
         }
 
-        xEventGroupClearBits(ping_event_group, PING_END_BIT);
-        ESP_LOGI(TAG, "Starting ping");
-        esp_ping_start(ping);
-        tries++;
-        xEventGroupWaitBits(ping_event_group, PING_END_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
-        // Process ping result
-        if (ping_value != -1)
+        if (first_ping || (pdMS_TO_TICKS(xTaskGetTickCount()) - last_ping_time) > pdMS_TO_TICKS(config.interval_ping * 1000)) // time to ping
         {
-            ESP_LOGI(TAG, "Ping successful: %d ms", ping_value);
-            tries = 0;
-        }
-        else
-        {
-            ESP_LOGW(TAG, "Ping failed");
-            if (tries >= 3)
+            xEventGroupClearBits(ping_event_group, PING_END_BIT);
+            ESP_LOGI(TAG, "Starting ping");
+            esp_ping_start(ping);
+            tries++;
+            xEventGroupWaitBits(ping_event_group, PING_END_BIT, pdFALSE, pdFALSE, portMAX_DELAY);
+            // Process ping result
+            if (ping_value != -1)
             {
-                ESP_LOGE(TAG, "Ping failed 3 times in a row, retrying in a minute");
-                vTaskDelay(pdMS_TO_TICKS(60 * 1000));
+                ESP_LOGI(TAG, "Ping successful: %d ms", ping_value);
+                tries = 0;
+                last_ping_time = pdMS_TO_TICKS(xTaskGetTickCount()); // Update last ping time on success
+                first_ping = false;
             }
             else
             {
-                vTaskDelay(pdMS_TO_TICKS(3000));
+                ESP_LOGW(TAG, "Ping failed (attempt %d)", tries);
+                if (tries >= 3)
+                {
+                    ESP_LOGE(TAG, "Ping failed 3 times in a row, retrying in a minute");
+                    tries = 0;                                           // Reset tries after waiting
+                    last_ping_time = pdMS_TO_TICKS(xTaskGetTickCount()); // Update time to wait full interval
+                }
             }
-            continue;
         }
-
-        vTaskDelay(pdMS_TO_TICKS(config.interval_ping * 1000));
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Wait before checking again
     }
 }
 

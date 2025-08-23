@@ -24,6 +24,8 @@ const config_entry_t config_entries[] = {
     {"lcd_notify", CONFIG_ENTRY_TYPE_BOOL, &config.lcd_notify},
     {"time_save_telemetry", CONFIG_ENTRY_TYPE_UINT32, &config.time_save_telemetry},
     {"keepalive_interval", CONFIG_ENTRY_TYPE_UINT32, &config.keepalive_interval},
+    {"interval_reboot", CONFIG_ENTRY_TYPE_UINT32, &config.interval_reboot},
+    {"interval_network_error_reboot", CONFIG_ENTRY_TYPE_UINT32, &config.interval_network_error_reboot},
     {NULL, CONFIG_ENTRY_TYPE_NONE, NULL} // Sentinel
 };
 
@@ -46,6 +48,8 @@ void config_set_default()
     config.interval_battery = 10 * 60;
     config.interval_ping = 10 * 60;
     config.interval_send_to_tb = 10 * 60;
+    config.interval_reboot = 7 * 24 * 60 * 60;      // 7 days
+    config.interval_network_error_reboot = 60 * 60; // 1 hour
 
     config.time_same_timestamp = 3;
     config.interval_lcd_timeout = 20;
