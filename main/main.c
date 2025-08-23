@@ -138,6 +138,7 @@ esp_err_t wifi_connect_sta(const char *ssid, const char *pass, uint32_t timeout_
 static void on_modem_event(void *arg, esp_event_base_t event_base,
                            int32_t event_id, void *event_data)
 {
+    static bool sim_ok_already_displayed = false;
     if (event_base == MODEM_BOARD_EVENT)
     {
         switch (event_id)
@@ -152,7 +153,11 @@ static void on_modem_event(void *arg, esp_event_base_t event_base,
         case MODEM_EVENT_SIMCARD_CONN:
             ESP_LOGI(TAG, "Modem Board Event: SIM Card Connected");
             // led_indicator_stop(s_led_system_handle, BLINK_CONNECTED);
-            lcd_setup_msg("SIM OK", NULL);
+            if (!sim_ok_already_displayed)
+            {
+                lcd_setup_msg("SIM OK", NULL);
+                sim_ok_already_displayed = true;
+            }
             sim_ok = true;
             break;
 
@@ -186,18 +191,35 @@ static void on_modem_event(void *arg, esp_event_base_t event_base,
             break;
 
         case MODEM_EVENT_NET_DISCONN:
+        {
+
             ESP_LOGW(TAG, "Modem Board Event: Network disconnected");
+            network_connected = false;
+
+            int rssi;
+            int ber;
+            esp_err_t ret = modem_board_get_signal_quality(&rssi, &ber);
+            if (ret == ESP_OK)
+            {
+                ESP_LOGI(TAG, "Signal quality: RSSI=%d, BER=%d", rssi, ber);
+                if (rssi == 99 && ber == 99)
+                {
+                    ESP_LOGW(TAG, "No 4G signal");
+                    lcd_setup_msg("Réseau", "aucun signal !");
+                    break;
+                }
+            }
             if (sim_ok)
             {
-                lcd_setup_msg("Réseau", "déconnecté");
+                lcd_setup_msg("Réseau", "déconnecté!");
             }
             else
             {
                 lcd_setup_msg("Erreur", "SIM");
             }
             // led_indicator_stop(s_led_4g_handle, BLINK_CONNECTED);
-            network_connected = false;
             break;
+        }
 
         case MODEM_EVENT_WIFI_STA_CONN:
             ESP_LOGI(TAG, "Modem Board Event: Station connected");
