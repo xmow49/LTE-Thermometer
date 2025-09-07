@@ -9,9 +9,8 @@ static uint8_t PEER[]{0x84, 0x0D, 0x8E, 0xD2, 0x31, 0xE4}; // MAC Adress of Serv
 #define DHTPIN 13     // pin of DHT22
 #define DHTTYPE DHT22 // DHT type
 
-DHT dht(DHTPIN, DHTTYPE); // define DHT
-
 #define EEPROM_SIZE 512 // Size of EEPROM
+#define USE_AHT20
 
 #define DEBUG 0
 

@@ -2,10 +2,16 @@
 #include <ESP8266WiFi.h>
 #include <SPI.h>
 #include <Wire.h>
-#include <DHT.h>
 #include "config.h"
 #include <EEPROM.h>
-#include <string.h> // Pour memcpy
+#include <string.h>
+
+#ifdef USE_AHT20
+#include "Adafruit_AHTX0.h"
+
+#else
+#include <DHT.h>
+#endif
 
 #define MAGIC_NUMBER 0xDBE49EB0
 
@@ -24,6 +30,14 @@ typedef struct config_t
 } config_t;
 
 config_t config;
+
+#ifdef USE_AHT20
+
+Adafruit_AHTX0 aht;
+
+#else
+DHT dht(DHTPIN, DHTTYPE); // define DHT
+#endif
 
 bool config_received = false;
 
@@ -95,43 +109,15 @@ void setupEspNow()
   }
 }
 
-float TempClient()
-{
-  float t = dht.readTemperature(); // get temperature
-  int ntry = 0;
-  while (isnan(t) && ntry < 5)
-  {
-    if (ntry != 0)
-    {
-      delay(100);
-    }
-    ntry++;
-    t = dht.readTemperature();
-  }
-  return t;
-}
-float HumClient()
-{
-  float h = dht.readHumidity(); // get humidity
-  int ntry = 0;
-  while (isnan(h) && ntry < 5)
-  {
-    if (ntry != 0)
-    {
-      delay(100);
-    }
-    ntry++;
-    h = dht.readHumidity();
-  }
-  return h;
-}
 float getBatteryVoltage()
 {
-  // Pont diviseur: R1 = 22kΩ, R2 = 56kΩ
-  float voltage_divider_factor = (22000.0 + 56000.0) / (56000.0);
-
-  DBG_PRINTLN("Battery Voltage (raw): " + String(analogRead(BATTERYPIN)));
-  return (analogRead(BATTERYPIN) * (3.3 / 1024.0)) * voltage_divider_factor * 1000;
+  uint16_t analogValue = analogRead(BATTERYPIN);
+  // float adc_voltage = 0.003 * analogValue - 0.0164;
+  // DBG_PRINTLN("Battery Voltage on adc: " + String(adc_voltage, 3) + " V");
+  float battery_voltage = (analogValue * 4.9395 - 8.8855) / 1000.0; // Voltage divider
+  DBG_PRINTLN("Battery Voltage (raw): " + String(analogValue));
+  DBG_PRINTLN("Battery Voltage: " + String(battery_voltage, 3) + " V");
+  return battery_voltage;
 }
 
 // Voltage to percentage lookup table (more accurate)
@@ -161,10 +147,10 @@ const float voltageTable[][2] = {
 
 int getBattery()
 {
-  float voltage_v = getBatteryVoltage() / 1000.0;
+  float voltage_v = getBatteryVoltage();
 
   // Linear interpolation in the lookup table
-  for (int i = 0; i < sizeof(voltageTable) / sizeof(voltageTable[0]) - 1; i++)
+  for (unsigned int i = 0; i < sizeof(voltageTable) / sizeof(voltageTable[0]) - 1; i++)
   {
     if (voltage_v >= voltageTable[i + 1][0])
     {
@@ -181,14 +167,27 @@ int getBattery()
 
 void sendTemp()
 {
-  dht.begin();
-
   telemetry_message_t msg;
-  //----Get values-----------
-  msg.temperature = TempClient();
-  msg.humidity = HumClient();
+  msg.temperature = NAN;
+  msg.humidity = NAN;
+#ifdef USE_AHT20
+  if (aht.begin())
+  {
+    sensors_event_t humidity, temp;
+    aht.getEvent(&humidity, &temp); // populate temp and humidity objects with fresh data
+    msg.temperature = temp.temperature;
+    msg.humidity = humidity.relative_humidity;
+  }
+  else
+  {
+    DBG_PRINTLN("Could not find AHT20 sensor!");
+  }
+#else
+  dht.begin();
+#endif
+
   msg.battery_percentage = getBattery();
-  msg.battery_voltage_mv = getBatteryVoltage();
+  msg.battery_voltage_mv = getBatteryVoltage() * 1000;
 
   DBG_PRINTLN("Temperature: " + String(msg.temperature) + " °C");
   DBG_PRINTLN("Humidity: " + String(msg.humidity) + " %");
