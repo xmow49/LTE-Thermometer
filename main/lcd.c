@@ -20,6 +20,7 @@
 #include "bitmap.h"
 #include "config.h"
 #include "device.hpp"
+#include "button.h"
 
 extern lv_font_t freesans_18;
 extern lv_font_t freesans_16;
@@ -292,7 +293,10 @@ void lcd_setup_msg(const char *title, const char *msg)
 
     if (!config.lcd_notify)
     {
-        return;
+        if (!button_get_state())
+        {
+            return;
+        }
     }
 
     if (lvgl_port_lock(0))
@@ -475,6 +479,10 @@ void lcd_set_plugged(bool plugged)
 void lcd_task(void *pvParameters)
 {
     lcd_last_on = xTaskGetTickCount();
+    if (!config.lcd_notify)
+    {
+        lcd_set_on(false);
+    }
     while (1)
     {
         if (lcd_on && (xTaskGetTickCount() - lcd_last_on > pdMS_TO_TICKS(config.interval_lcd_timeout * 1000)))
